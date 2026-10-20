@@ -2,10 +2,6 @@
 
 This project connects the SarSim0 synthetic time-series generator to a Chronos-2 training pipeline and evaluates the resulting model on the M4 Monthly dataset.
 
-The project is based on the ideas in *Zero-shot Forecasting by Simulation Alone*. It is not an exact paper reproduction: the paper trained Chronos-Small using synthetic data, while this project continues training the pretrained `amazon/chronos-2` model.
-
-## Work completed
-
 ### Paper and repository review
 
 - Reviewed the SarSim0 paper and appendices to identify the datasets, simulator settings, training procedure, and evaluation approach.
@@ -154,15 +150,189 @@ M4 Monthly is used only for evaluation:
 
 No M4 observations are used to update the model. This keeps the evaluation zero-shot.
 
+## Reproducing the results
+
+Run these commands from a GPU-enabled UCSD DSMLP session.
+
+### 1. Clone the project
+
+```bash
+git clone \
+  git@github.com:DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git
+
+cd chronos2-sarsim0-anomaly-team
+```
+
+### 2. Create the Python environment
+
+The completed experiments used Python 3.11. Create and activate an isolated environment:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+python -m pip install --no-cache-dir -r requirements-lock.txt
+
+export HF_HOME="$PWD/.cache/huggingface"
+```
+
+Confirm that the environment and GPU are available:
+
+```bash
+which python
+
+python - <<'PY'
+import torch
+
+print("PyTorch:", torch.__version__)
+print("CUDA build:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+
+x = torch.randn(256, 256, device="cuda")
+y = x @ x
+torch.cuda.synchronize()
+
+print("GPU:", torch.cuda.get_device_name(0))
+print("CUDA test passed:", y.shape)
+PY
+```
+
+### 3. Install SarSim0
+
+```bash
+mkdir -p external
+
+git clone \
+  https://github.com/kashif/sarsim0.git \
+  external/sarsim0
+
+python -m pip install \
+  -e ./external/sarsim0 \
+  --no-deps
+```
+
+Verify the import:
+
+```bash
+python -c "import sarsim0; print(sarsim0.__file__)"
+```
+
+### 4. Download the M4 data
+
+Use a sparse checkout so the project does not download the full M4 methods repository:
+
+```bash
+git clone \
+  --depth 1 \
+  --filter=blob:none \
+  --sparse \
+  https://github.com/Mcompetitions/M4-methods.git \
+  external/M4-data
+
+git -C external/M4-data sparse-checkout set Dataset
+```
+
+The required source files should now be available at:
+
+```text
+external/M4-data/Dataset/Train/Monthly-train.csv
+external/M4-data/Dataset/Test/Monthly-test.csv
+external/M4-data/Dataset/M4-info.csv
+```
+
+### 5. Stage and validate M4 Monthly
+
+```bash
+python scripts/stage_m4_monthly.py
+python scripts/validate_m4_monthly.py
+```
+
+This creates `data/m4/monthly.parquet`. Validation should report 48,000 series, an 18-step target horizon, and no invalid values.
+
+Run the Seasonal Naive baseline:
+
+```bash
+python scripts/evaluate_seasonal_naive.py
+```
+
+### 6. Evaluate the original Chronos-2 model
+
+```bash
+mkdir -p outputs/baselines
+
+python scripts/evaluate_chronos2.py \
+  --model amazon/chronos-2 \
+  --output outputs/baselines/chronos2-monthly.parquet \
+  --batch-size 64
+```
+
+Expected results are approximately:
+
+```text
+Mean sMAPE: 0.1311438
+Mean MASE:  0.9220801
+```
+
+### 7. Validate the synthetic training path
+
+```bash
+python scripts/check_generator.py
+python scripts/check_sarsim0_stream.py
+python scripts/check_chronos2_training_step.py
+```
+
+These checks confirm that generated values are finite, batch shapes are correct, and Chronos-2 can complete a training step.
+
+### 8. Run the 100-step smoke test
+
+```bash
+python -u scripts/train_streaming.py \
+  --output-dir outputs/smoke-100 \
+  --context-length 512 \
+  --prediction-length 18 \
+  --batch-size 2 \
+  --max-steps 100 \
+  --learning-rate 1e-6 \
+  --save-steps 50 \
+  --seed 42
+```
+
+The run should complete 100 optimizer steps with finite losses and gradients.
+
+### 9. Evaluate the trained checkpoint
+
+```bash
+python scripts/evaluate_chronos2.py \
+  --model outputs/smoke-100/checkpoint-100 \
+  --output outputs/smoke-100/m4-monthly.parquet \
+  --batch-size 16
+```
+
+Expected results are approximately:
+
+```text
+Mean sMAPE: 0.1315116
+Mean MASE:  0.9243003
+```
+
+Small numerical differences may occur across GPU types and software builds. The main smoke-test success criteria are finite training values, completion of all 100 steps, successful checkpoint reload, and successful evaluation across all 48,000 series.
+
 ## Current project files
 
 ```text
-chronos2-sarsim0/
+chronos2-sarsim0-anomaly-team/
+├── requirements-lock.txt
 ├── data/m4/monthly.parquet
 ├── external/sarsim0/
+├── scripts/check_chronos2_training_step.py
 ├── scripts/check_generator.py
+├── scripts/check_sarsim0_stream.py
 ├── scripts/evaluate_chronos2.py
+├── scripts/evaluate_seasonal_naive.py
+├── scripts/stage_m4_monthly.py
 ├── scripts/train_streaming.py
+├── scripts/validate_m4_monthly.py
 ├── outputs/baselines/chronos2-monthly.parquet
 └── outputs/smoke-100/
     ├── checkpoint-100/
