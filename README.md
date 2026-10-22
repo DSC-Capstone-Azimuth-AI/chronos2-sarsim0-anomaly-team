@@ -230,22 +230,38 @@ From `sfm results` (RTX 3070 Ti for evaluation, context length 512):
 | Seasonal naive | — | — | 1.1901 | 1.1901 | 1.1375 | 1.1375 | 15.99 | 1.2597 | 0.014 |
 | `amazon/chronos-2` (pretrained, zero-shot) | — | — | 0.6343 | 0.5255 | 0.6234 | 0.5102 | 13.11 | 0.9221 | 0.973 |
 | `chronos2-ft-cpu` (fine-tune, 1k steps × batch 8, lr 1e-5, CPU) | 8k | 24.7 min (CPU) | 0.6289 | 0.5216 | 0.6158 | 0.5045 | 13.08 | 0.9174 | 0.960 |
-| `ft-500` (fine-tune, `chronos2-ft-gpu` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | **0.6248** | **0.5176** | **0.6105** | **0.4987** | **12.75** | **0.9038** | 0.973 |
+| `ft-500` (fine-tune, `chronos2-ft-gpu` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | 0.6248 | 0.5176 | 0.6105 | 0.4987 | **12.75** | **0.9038** | 0.973 |
+| `chronos2-ft-gpu-3070ti` (fine-tune, full `chronos2-ft-gpu`: 5k steps × 256, lr 1e-5) | 1.28M | 1.83 h (3070 Ti) | **0.6176** | **0.5114** | **0.6054** | **0.4937** | 12.89 | 0.9242 | 0.965 |
 
-`ft-500` was run with
-`sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500`.
+Commands:
+`sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500` and
+`sfm train configs/train/chronos2-ft-gpu.yaml --set name=chronos2-ft-gpu-3070ti`.
 
 - The pretrained Chronos-2 M4 numbers reproduce the original pipeline exactly (sMAPE 0.1311438,
   MASE 0.9220801).
-- **`ft-500` is the best model so far on every set.** Training only on SarSim0 lowered real-data
-  M4 MASE by 2.0%, and sim MASE by 1.5% (iid) and 2.1% (unseen seasonalities). Paired per-series
-  bootstrap vs. pretrained Chronos-2: ΔMASE −0.018 on M4 (95% CI [−0.020, −0.017]), −0.010 on
-  sim_iid ([−0.017, −0.003]), −0.013 on sim_ood_season ([−0.019, −0.008]); 56–59% of series
-  improved on each set. Interval calibration held: M4 98% coverage stayed at 0.973 and 80%
-  coverage moved toward nominal (0.758 → 0.772).
-- Caveats for `ft-500`: one training seed (the CIs cover eval-set sampling, not run-to-run noise),
-  and the 200 warmup steps were sized for the 5,000-step config, so 40% of the run was spent
-  warming up. Training loss went from ~2.92 to ~2.76 (noisy).
+- **`ft-500` is the best model on real data (M4).** Training only on SarSim0 lowered M4 MASE by
+  2.0%. Paired per-series bootstrap vs. pretrained Chronos-2: ΔMASE −0.018 on M4
+  (95% CI [−0.020, −0.017]), −0.010 on sim_iid ([−0.017, −0.003]), −0.013 on sim_ood_season
+  ([−0.019, −0.008]); 56–59% of series improved on each set. Interval calibration held: M4 98%
+  coverage stayed at 0.973 and 80% coverage moved toward nominal (0.758 → 0.772).
+- **Training 10× longer improved simulated data but erased the M4 gain.** `chronos2-ft-gpu-3070ti`
+  is the best model on both sim sets (ΔMASE vs. pretrained −0.017 iid, −0.018 OOD; also better
+  than `ft-500`), but on M4 it is no better than the untouched pretrained model (ΔMASE +0.002,
+  CI [−0.000, +0.004]) and clearly worse than `ft-500` (+0.020, CI [+0.019, +0.022]). Its M4
+  98% coverage also dropped to 0.965. M4 sMAPE (12.89) is still below pretrained, so the loss
+  is concentrated in series where MASE penalizes larger errors. Training loss was flat after
+  ~500 steps (2.82 → 2.80 averaged over 500-step windows), so the extra 4,500 steps mostly moved
+  the model toward SarSim0-specific patterns rather than more general skill. This is a
+  sim-to-real gap or forgetting effect: more simulated training stops helping real data.
+- Caveats: one training seed per run (the CIs cover eval-set sampling, not run-to-run noise).
+  `ft-500` used the 200-step warmup sized for 5,000 steps, so 40% of its run was warmup. Only
+  the last checkpoint was kept (`save_total_limit: 1`), so we cannot see where between step 500
+  and 5,000 M4 performance peaked.
+- Next: keep every checkpoint (or evaluate during training) to find where real-data performance
+  peaks. Choose that step with a **real-data validation set that is not M4** (e.g. M4 Quarterly
+  or a GiftEval dataset); picking checkpoints by M4 Monthly score would make M4 no longer a
+  zero-shot test. Also worth trying: lower learning rate, and the from-scratch run, where there
+  is no pretrained knowledge to forget.
 - The CPU fine-tune is a small run (training loss 2.93 → 2.90). Read it as "the pipeline trains
   and does no harm" rather than an improvement. It narrowed M4 intervals (98% coverage
   0.973 → 0.960), which `ft-500` did not.
