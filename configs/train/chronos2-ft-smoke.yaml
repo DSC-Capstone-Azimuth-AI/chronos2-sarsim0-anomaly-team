@@ -1,0 +1,12 @@
+# The original 100-step plumbing check (README "100-step smoke test"). Not expected to improve the model. Taken from Ali Ahmed
+inherit: _base-chronos2.yaml
+name: chronos2-ft-smoke
+
+data:
+  batch_size: 2
+
+train:
+  max_steps: 100
+  learning_rate: 1.0e-6
+  logging_steps: 1
+  save_steps: 50

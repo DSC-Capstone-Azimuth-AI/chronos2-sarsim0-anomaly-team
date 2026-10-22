@@ -1,0 +1,23 @@
+# "Simulation alone": Chronos-2 architecture from random init, trained only on SarSim0.
+# The paper trains its models 250k-500k steps at batch 1024-4096 (App. E); this is a
+# first overnight budget run (~7 h on a 3070 Ti) to see whether loss and held-out metrics move.
+inherit: _base-chronos2.yaml
+name: chronos2-scratch-gpu
+
+model:
+  init: scratch
+
+data:
+  batch_size: 64
+  num_workers: 2
+
+train:
+  max_steps: 20000
+  learning_rate: 1.0e-4     # paper App. E (Adam, 1e-4)
+  lr_scheduler: cosine
+  warmup_steps: 1000
+  grad_accum: 4
+  save_steps: 2000
+
+runtime:
+  device: cuda

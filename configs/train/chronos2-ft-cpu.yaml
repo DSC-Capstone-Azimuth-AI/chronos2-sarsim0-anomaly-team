@@ -1,0 +1,15 @@
+# Laptop / no-GPU fine-tune (10/23 milestone). ~1.4 s/step at batch 8 on a 12-core CPU → ~25 min.
+inherit: _base-chronos2.yaml
+name: chronos2-ft-cpu
+
+data:
+  batch_size: 8
+
+train:
+  max_steps: 1000
+  learning_rate: 1.0e-5
+  warmup_steps: 50
+  save_steps: 500
+
+runtime:
+  device: cpu
