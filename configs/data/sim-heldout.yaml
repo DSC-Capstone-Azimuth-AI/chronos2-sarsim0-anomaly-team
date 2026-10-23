@@ -1,0 +1,24 @@
+# Fixed held-out SarSim0 eval sets. Build with: sfm make-sim
+#
+# Seeds are far from training seeds (training worker i uses data.seed + i, e.g. 42, 43, ...),
+# so no held-out series comes from a training stream.
+
+defaults:
+  n_series: 2000
+  context_length: 512
+  prediction_length: 18
+  season_length: 1          # MASE scale = naive one-step error (sim series have no single period)
+  sarsim: {}                # merged over SARSIM_DEFAULTS in src/sarsim_fm/data/sim.py
+
+splits:
+  # Same distribution as training (paper Table 9 defaults), different seed.
+  sim_iid:
+    seed: 1000003
+
+  # Seasonal periods the training distribution never produces: plain SARIMA draws
+  # s from [0, 52] and SARIMA-2 uses the Table 9 pairs, so everything here is > 52.
+  sim_ood_season:
+    seed: 2000003
+    sarsim:
+      s_range: [60, 120]
+      seasonality_pairs: [[0, 96], [0, 120], [96, 7], [7, 96]]

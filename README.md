@@ -1,341 +1,365 @@
-# Chronos-2 Training with SarSim0
+# SarSim0 forecasting models — D05 Anomaly team
 
-This project connects the SarSim0 synthetic time-series generator to a Chronos-2 training pipeline and evaluates the resulting model on the M4 Monthly dataset.
+Train time-series forecasting models on [SarSim0](https://github.com/kashif/sarsim0) synthetic data
+("Zero-shot Forecasting by Simulation Alone", arXiv 2601.00970) and evaluate them zero-shot on
+held-out simulated data and M4 Monthly. The saved quantile forecasts are the starting point for
+forecast-residual anomaly detection.
 
-### Paper and repository review
+Everything runs through one CLI, `sfm`, driven by YAML configs. The same config runs on a laptop
+CPU, a consumer GPU, or DSMLP; only `--device` changes. Terms in *italics* are defined in the
+[Glossary](#glossary).
 
-- Reviewed the SarSim0 paper and appendices to identify the datasets, simulator settings, training procedure, and evaluation approach.
-- Cloned the SarSim0 repository into `external/sarsim0`.
-- Chose Chronos-2 as the first model because an existing training framework was available.
+## How it works
 
-### M4 Monthly preparation
+### The idea
 
-- Downloaded the M4 Monthly data from the M4 repository.
-- Confirmed that it contains 48,000 monthly time series.
-- Confirmed that every series has an 18-step forecasting horizon.
-- Staged the data in `data/m4/monthly.parquet` with separate training histories and test targets.
-- Evaluated a Seasonal Naive baseline across all 48,000 series.
-- Created 48,000 standardized 60-step windows for reproducing the paper's UMAP visualization.
-- Verified that the staged data and visualization windows contain no invalid values.
+We want a forecaster that works on data it has never been trained on, such as household
+electricity, without collecting and labelling that data first. The SarSim0 paper's bet is that a
+model trained **only on simulated series** can do this, as long as the simulator produces enough
+*variety* (trends, seasonal cycles of many lengths, noise of many shapes) for the model to learn
+general forecasting skills, not the quirks of one dataset. SarSim0 series are not meant to look
+like any particular real data. They are meant to be diverse.
 
-The UMAP windows are visualization-only because they may include held-out test values. They are not used for training or model selection.
+Once we have a forecaster that is good zero-shot, anomaly detection follows from its *quantile
+forecasts*: the model gives a range of likely next values, and an actual reading far outside that
+range (below q0.01 or above q0.99) gets flagged.
 
-### Chronos-2 baseline
+### The pipeline
 
-Evaluated the original `amazon/chronos-2` checkpoint on M4 Monthly using each series' training history as context and its official 18-step test portion as the target.
+```mermaid
+flowchart LR
+  subgraph TRAIN["1 · Train (sfm train)"]
+    A["SarSim0 simulator<br/>random SARIMA series"] -->|"512-step context +<br/>18-step target"| B["Chronos-2"]
+    B -->|"21 quantile forecasts"| C["quantile loss<br/>vs. true target"]
+    C -->|"update weights"| B
+  end
+  B --> D[("checkpoint")]
+  subgraph EVAL["2 · Evaluate (sfm eval, automatic after training)"]
+    E["held-out sim sets<br/>sim_iid · sim_ood_season"] --> G
+    F["real data<br/>M4 Monthly"] --> G
+    D --> G["forecast 18 steps<br/>13 quantiles per step"]
+    G --> H["metrics + saved quantiles"]
+  end
+  H -.->|"next phase"| I["anomaly detection:<br/>actuals outside q0.01–q0.99"]
+```
 
-| Model | Mean sMAPE | Mean MASE |
-|---|---:|---:|
-| Original Chronos-2 | 0.1311438 | 0.9220801 |
+1. **Environment** (`uv sync`, `sfm check`): install the pinned packages for CPU or GPU, then
+   confirm SarSim0 and a few training steps work on this machine and how fast they run.
+2. **Eval sets** (`sfm make-sim`, `sfm stage-m4`): write fixed test data to `data/eval/`. The
+   model never trains on these. Two are simulated (one like training, one with seasonal periods
+   training never produces) and one is real (M4 Monthly).
+3. **Baselines** (`sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2`): the bar
+   to beat. Seasonal naive is the "dumb" forecast; pretrained Chronos-2 is Amazon's model before
+   we touch it.
+4. **Train** (`sfm train <config>`): stream SarSim0 data into Chronos-2 and update its weights
+   (details below). The config decides fine-tune vs. from scratch, steps, batch size,
+   learning rate and device.
+5. **Evaluate**: the final checkpoint forecasts every eval set. Per-series scores and the full
+   quantile forecasts go to `outputs/<run>/eval/`.
+6. **Compare** (`sfm results`): one markdown table of every run vs. the baselines, ready for the
+   Experiments log.
 
-The forecasts and per-series metrics were saved to:
+### One training step, concretely
+
+1. SarSim0 simulates `data.batch_size` series of 6,200 points and drops the first 200 (*burn-in*).
+2. A random 530-point window is cut from each: the first 512 points are the *context*, the
+   next 18 are the *target*.
+3. Chronos-2 reads the context and predicts 21 *quantiles* (0.01 … 0.99) for each of the 18
+   future steps.
+4. The *quantile loss* scores those predictions against the true 18 values.
+5. Backpropagation computes gradients and AdamW updates the weights. With `grad_accum: k`, the
+   gradients of k batches are added up before a single update.
+
+Nothing is stored: each step sees brand-new simulated series, so there are no epochs and no fixed
+training set to overfit. This is why a separate held-out set is needed to measure progress.
+
+## Layout
 
 ```text
-outputs/baselines/chronos2-monthly.parquet
+configs/
+  data/sim-heldout.yaml          held-out SarSim0 eval sets (seeds, sizes, unseen seasonalities)
+  train/_base-chronos2.yaml      shared defaults; other train configs `inherit:` it
+  train/chronos2-ft-smoke.yaml   original 100-step plumbing check
+  train/chronos2-ft-cpu.yaml     fine-tune on a laptop CPU (~25 min)
+  train/chronos2-ft-gpu.yaml     fine-tune on one GPU (~2 h on a 3070 Ti)
+  train/chronos2-scratch-gpu.yaml  random init, SarSim0 only ("simulation alone")
+src/sarsim_fm/
+  cli.py          `sfm` commands
+  config.py       YAML loading, `inherit:`, `--set key=value` overrides
+  runtime.py      device/precision selection, environment + git info for run records
+  metrics.py      sMAPE, MASE, scaled quantile loss, coverage
+  evaluate.py     score any model on any eval set, save per-series quantiles
+  data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
+  models/         registry + one file per model family (chronos2, seasonal naive)
+tests/            fast unit tests (`uv run pytest`)
+data/  outputs/  external/        generated locally, git-ignored
 ```
 
-### SarSim0 generator validation
+Use notebooks (`notebooks/`, install with `--extra notebooks`) for looking at results: they read
+`outputs/**/eval/*.parquet`. Keep training and evaluation in the CLI so every number has a config
+and a `run-config.json` behind it.
 
-Created `scripts/check_generator.py` and verified that SarSim0 produces finite tensors with the expected shapes.
+### What each module does
 
-The current generator configuration is:
+| Module | Role | Main functions |
+|---|---|---|
+| `cli.py` | The `sfm` command. Each subcommand reads its config, picks the device, and calls the modules below. | `cmd_check`, `cmd_make_sim`, `cmd_stage_m4`, `cmd_train`, `cmd_eval`, `cmd_results` |
+| `config.py` | Reads a YAML config, merges the file named in `inherit:` underneath it, and applies `--set` overrides. | `load_config`, `set_dotted` |
+| `runtime.py` | Decides where and how to compute: device (`auto` → CUDA if present, else CPU) and precision (bf16 on capable GPUs). Collects versions, GPU name and git SHA for `run-config.json`. | `resolve_runtime`, `environment_info` |
+| `data/sim.py` | Everything SarSim0. Turns the YAML `sarsim:` block into a `SarSimConfig` (defaults: univariate, no covariates, length 6,000), builds the endless training stream, and writes the fixed held-out sets. | `sarsim_config`, `training_stream`, `make_heldout_split` |
+| `data/m4.py` | Converts the M4 Monthly CSVs into the eval-set format and checks counts and horizons. | `stage_m4_monthly` |
+| `data/eval_sets.py` | The single on-disk format all eval sets share, with validation on write. | `write_eval_set`, `load_eval_set`, `EvalSet` |
+| `models/__init__.py` | The registry: maps a spec like `chronos2:outputs/run/checkpoint-final` to the code that loads or trains it. | `load_forecaster`, `get_trainer`, `Forecaster` |
+| `models/chronos2.py` | Chronos-2 specifics: load a checkpoint for forecasting, build a model (pretrained or random weights), train it with the Hugging Face Trainer, and time raw training steps for `sfm check`. | `load`, `build_model`, `train`, `timed_steps` |
+| `models/naive.py` | Seasonal naive baseline. | `SeasonalNaive` |
+| `evaluate.py` | Runs any forecaster on any eval set, scores each series, and saves quantiles plus a summary. | `evaluate`, `save_eval` |
+| `metrics.py` | The metric formulas. | `smape`, `mase`, `naive_scale`, `scaled_quantile_loss`, `quantile_loss`, `coverage` |
 
-```python
-SarSimConfig(
-    series_length=6000,
-    burn_in=200,
-    context_window=512,
-    prediction_window=18,
-    multivariate_prob=0.0,
-    with_covariates_prob=0.0,
-    pad_max=0,
-)
-```
-
-For a batch size of 16, the generator produces:
+What `sfm train configs/train/chronos2-ft-cpu.yaml` calls, in order:
 
 ```text
-context: (16, 512)
-target:  (16, 18)
+config.load_config            read YAML + inherit + --set
+runtime.resolve_runtime       pick cpu/cuda, bf16 or fp32
+→ write outputs/<name>/run-config.json
+models.get_trainer("chronos2") → chronos2.train
+    chronos2.build_model          pretrained weights or random init
+    data.sim.training_stream      endless SarSim0 batches
+    Chronos2Trainer.train()       the training loop (Hugging Face)
+    → checkpoint-final/, train-log.csv
+models.load_forecaster("chronos2:<checkpoint-final>")
+for each eval set in eval.datasets:
+    data.eval_sets.load_eval_set → evaluate.evaluate → evaluate.save_eval
 ```
 
-The initial experiment is univariate and does not use covariates or variable-length padding.
+## Setup
 
-### Training integration
-
-Created `scripts/train_streaming.py` to connect the SarSim0 streaming generator to Chronos-2.
-
-A 10-step integration run confirmed that:
-
-- Synthetic batches reach Chronos-2 correctly.
-- Forward and backward passes complete.
-- Losses and gradients are finite.
-- A trained checkpoint can be saved and reloaded.
-
-The integration checkpoint loaded successfully through `Chronos2Pipeline`.
-
-### 100-step smoke test
-
-Completed a 100-step training run with:
-
-```text
-Model:             amazon/chronos-2
-Context length:    512
-Prediction length: 18
-Batch size:        2
-Learning rate:     1e-6
-Training steps:    100
-Seed:              42
-```
-
-The run completed all 100 optimizer steps with finite losses and gradients. The final checkpoint loaded successfully and was evaluated across all 48,000 M4 Monthly series.
-
-| Model | Mean sMAPE | Mean MASE |
-|---|---:|---:|
-| Original Chronos-2 | 0.1311438 | 0.9220801 |
-| 100-step SarSim0 checkpoint | 0.1315116 | 0.9243003 |
-
-The smoke checkpoint is slightly worse than the original model. This run was intended to validate the complete implementation, not to produce a converged model.
-
-The checkpoint evaluation was saved to:
-
-```text
-outputs/smoke-100/m4-monthly.parquet
-```
-
-## How the project works
-
-```text
-SarSim0 generates synthetic series
-              |
-              v
-Each series is split into a 512-step context
-and an 18-step future target
-              |
-              v
-The streaming dataset packages the batch
-for Chronos-2
-              |
-              v
-Chronos-2 computes forecasting loss and
-updates its parameters
-              |
-              v
-The saved checkpoint is loaded for inference
-              |
-              v
-M4 training histories are used as context and
-forecasts are scored against held-out targets
-```
-
-### Synthetic data generation
-
-SarSim0 generates new synthetic time series during training. The project does not create one large, fixed synthetic training file. This allows the model to see newly simulated examples as training proceeds.
-
-### Streaming training
-
-Each streaming dataset item is already a complete logical batch. The custom trainer passes these batches directly to Chronos-2 without adding another batch dimension.
-
-The batch contains the context, future target, and the additional fields required by Chronos-2. The model computes its forecasting loss, backpropagates it, and updates its weights.
-
-### M4 evaluation
-
-M4 Monthly is used only for evaluation:
-
-1. The official training portion of each series is provided as context.
-2. Chronos-2 predicts the next 18 values.
-3. Predictions are compared with the official held-out test values.
-4. Per-series forecasts, sMAPE, and MASE are saved to Parquet.
-5. Mean sMAPE and MASE are reported across all 48,000 series.
-
-No M4 observations are used to update the model. This keeps the evaluation zero-shot.
-
-## Reproducing the results
-
-Run these commands from a GPU-enabled UCSD DSMLP session.
-
-### 1. Clone the project
+Requires [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`, or
+`pip install --user uv` on DSMLP). `uv.lock` pins every package, including SarSim0 at commit
+`71306403`, so all machines get identical versions.
 
 ```bash
-git clone \
-  git@github.com:DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git
-
+git clone git@github.com:DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git
 cd chronos2-sarsim0-anomaly-team
+
+uv sync --extra cpu      # laptop / no NVIDIA GPU (macOS uses the default PyPI torch)
+uv sync --extra cu130    # NVIDIA GPU (driver supporting CUDA 13: local or DSMLP)
+
+export HF_HOME="$PWD/.cache/huggingface"   # optional: keep model downloads in the repo
+uv run sfm check                           # environment report, SarSim0 checks, timed train steps
 ```
 
-### 2. Create the Python environment
+`uv run sfm ...` uses the project environment without activating it; `source .venv/bin/activate`
+then `sfm ...` also works.
 
-The completed experiments used Python 3.11. Create and activate an isolated environment:
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-
-python -m pip install --upgrade pip
-python -m pip install --no-cache-dir -r requirements-lock.txt
-
-export HF_HOME="$PWD/.cache/huggingface"
-```
-
-Confirm that the environment and GPU are available:
+## Running it
 
 ```bash
-which python
+# 1. Eval sets (once per machine)
+uv run sfm make-sim                        # data/eval/sim_iid + sim_ood_season (~10 s)
 
-python - <<'PY'
-import torch
-
-print("PyTorch:", torch.__version__)
-print("CUDA build:", torch.version.cuda)
-print("CUDA available:", torch.cuda.is_available())
-
-x = torch.randn(256, 256, device="cuda")
-y = x @ x
-torch.cuda.synchronize()
-
-print("GPU:", torch.cuda.get_device_name(0))
-print("CUDA test passed:", y.shape)
-PY
-```
-
-### 3. Install SarSim0
-
-```bash
-mkdir -p external
-
-git clone \
-  https://github.com/kashif/sarsim0.git \
-  external/sarsim0
-
-python -m pip install \
-  -e ./external/sarsim0 \
-  --no-deps
-```
-
-Verify the import:
-
-```bash
-python -c "import sarsim0; print(sarsim0.__file__)"
-```
-
-### 4. Download the M4 data
-
-Use a sparse checkout so the project does not download the full M4 methods repository:
-
-```bash
-git clone \
-  --depth 1 \
-  --filter=blob:none \
-  --sparse \
-  https://github.com/Mcompetitions/M4-methods.git \
-  external/M4-data
-
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/Mcompetitions/M4-methods.git external/M4-data
 git -C external/M4-data sparse-checkout set Dataset
+uv run sfm stage-m4                        # data/eval/m4_monthly
+
+# 2. Baselines
+uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2
+
+# 3. Train; the final checkpoint is evaluated on every set listed in `eval.datasets`
+uv run sfm train configs/train/chronos2-ft-cpu.yaml
+# Modify settings on the fly
+uv run sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500
+
+# 4. Every result so far, as a markdown table (paste into the Experiments log)
+uv run sfm results
 ```
 
-The required source files should now be available at:
+Useful flags:
+
+| Flag | Effect |
+|---|---|
+| `--device auto\|cpu\|cuda\|cuda:1\|mps` | override `runtime.device` (`auto` = CUDA if available, else CPU) |
+| `--precision auto\|bf16\|fp32` | `auto` = bf16 on GPUs that support it, fp32 otherwise |
+| `--set a.b=value` | override any config field; values are parsed as YAML (`--set eval.datasets=[sim_iid]`) |
+| `--overwrite` | replace an existing run directory with the same `name` |
+| `sfm check --config X --set data.batch_size=128` | measure s/step and peak VRAM before a long run |
+
+Each run writes `outputs/<name>/`:
 
 ```text
-external/M4-data/Dataset/Train/Monthly-train.csv
-external/M4-data/Dataset/Test/Monthly-test.csv
-external/M4-data/Dataset/M4-info.csv
+run-config.json      resolved config + device, package versions, git SHA, dirty flag, SarSim0 commit,
+                     and `timing` (train/eval/total seconds, finish time) once the run ends
+train-log.csv        loss, grad norm, learning rate per logging step
+checkpoint-final/    loadable with Chronos2Pipeline.from_pretrained / `--model chronos2:<path>`
+eval/<set>.parquet   per-series metrics + 13 quantiles (0.01 … 0.99) for every horizon step
+eval/summary.json    aggregate metrics per eval set
 ```
 
-### 5. Stage and validate M4 Monthly
+## Eval sets
 
-```bash
-python scripts/stage_m4_monthly.py
-python scripts/validate_m4_monthly.py
-```
+All eval sets share one parquet format (`item_id`, `context`, `target`, `season_length`; see
+`src/sarsim_fm/data/eval_sets.py`), so every model and metric works on every set. New datasets
+(DERCONNECT, PLAID) only need a writer for this format.
 
-This creates `data/m4/monthly.parquet`. Validation should report 48,000 series, an 18-step target horizon, and no invalid values.
+| Set | Series | Horizon | Season | What it tests |
+|---|---:|---:|---:|---|
+| `sim_iid` | 2,000 | 18 | 1 | Same SarSim0 distribution as training, seed 1000003 |
+| `sim_ood_season` | 2,000 | 18 | 1 | SarSim0 with periods 60–120; training only produces ≤ 52 |
+| `m4_monthly` | 48,000 | 18 | 12 | Official M4 train/test split |
 
-Run the Seasonal Naive baseline:
+Held-out series are generated one per call: SarSim0 draws one set of SARIMA parameters per
+vectorized call, so generating them in bulk would yield only a few distinct processes.
+Their seeds are far from training seeds (training worker *i* uses `data.seed + i`).
 
-```bash
-python scripts/evaluate_seasonal_naive.py
-```
+## Metrics
 
-### 6. Evaluate the original Chronos-2 model
+| Metric | Definition | Notes |
+|---|---|---|
+| sMAPE % | mean over series of symmetric MAPE, ×100 | M4 convention. Inflated on sim sets, where many series sit near zero |
+| MASE | MAE of median / in-sample seasonal-naive MAE | Main point metric |
+| SQL | 2 × mean pinball loss (q = 0.1…0.9) / same naive scale, averaged per series | Probabilistic MASE; equals MASE for a point forecast. Main metric for sim sets |
+| WQL | Σ pinball / Σ \|y\| over the whole set | Chronos/GiftEval convention; dominated by large-magnitude series on sim sets |
+| Cov 80 / Cov 98 | share of actuals inside [q0.1, q0.9] / [q0.01, q0.99] | Calibration; Cov 98 is the false-alarm side of a residual anomaly detector |
 
-```bash
-mkdir -p outputs/baselines
+## Results
 
-python scripts/evaluate_chronos2.py \
-  --model amazon/chronos-2 \
-  --output outputs/baselines/chronos2-monthly.parquet \
-  --batch-size 64
-```
+From `sfm results` (RTX 3070 Ti for evaluation, context length 512):
 
-Expected results are approximately:
+| Model | Series seen | Train time | sim_iid MASE | sim_iid SQL | sim_ood_season MASE | sim_ood_season SQL | M4 sMAPE % | M4 MASE | M4 Cov 98 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Seasonal naive | — | — | 1.1901 | 1.1901 | 1.1375 | 1.1375 | 15.99 | 1.2597 | 0.014 |
+| `amazon/chronos-2` (pretrained, zero-shot) | — | — | 0.6343 | 0.5255 | 0.6234 | 0.5102 | 13.11 | 0.9221 | 0.973 |
+| `chronos2-ft-cpu` (fine-tune, 1k steps × batch 8, lr 1e-5, CPU) | 8k | 24.7 min (CPU) | 0.6289 | 0.5216 | 0.6158 | 0.5045 | 13.08 | 0.9174 | 0.960 |
+| `ft-500` (fine-tune, `chronos2-ft-gpu` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | 0.6248 | 0.5176 | 0.6105 | 0.4987 | **12.75** | **0.9038** | 0.973 |
+| `chronos2-ft-gpu-3070ti` (fine-tune, full `chronos2-ft-gpu`: 5k steps × 256, lr 1e-5) | 1.28M | 1.83 h (3070 Ti) | **0.6176** | **0.5114** | **0.6054** | **0.4937** | 12.89 | 0.9242 | 0.965 |
+| `chronos2-scratch-gpu` (random init, SarSim0 only: 20k steps × 64 × grad_accum 4, lr 1e-4 cosine) | 5.12M | 7.21 h (3070 Ti) | 0.7024 | 0.5795 | 0.8300 | 0.6726 | 16.63 | 1.3712 | 0.867 |
 
-```text
-Mean sMAPE: 0.1311438
-Mean MASE:  0.9220801
-```
+Commands:
+`sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500`,
+`sfm train configs/train/chronos2-ft-gpu.yaml --set name=chronos2-ft-gpu-3070ti` and
+`sfm train configs/train/chronos2-scratch-gpu.yaml`.
 
-### 7. Validate the synthetic training path
+- The pretrained Chronos-2 M4 numbers reproduce the original pipeline exactly (sMAPE 0.1311438,
+  MASE 0.9220801).
+- **`ft-500` is the best model on real data (M4).** Training only on SarSim0 lowered M4 MASE by
+  2.0%. Paired per-series bootstrap vs. pretrained Chronos-2: ΔMASE −0.018 on M4
+  (95% CI [−0.020, −0.017]), −0.010 on sim_iid ([−0.017, −0.003]), −0.013 on sim_ood_season
+  ([−0.019, −0.008]); 56–59% of series improved on each set. Interval calibration held: M4 98%
+  coverage stayed at 0.973 and 80% coverage moved toward nominal (0.758 → 0.772).
+- **Training 10× longer improved simulated data but erased the M4 gain.** `chronos2-ft-gpu-3070ti`
+  is the best model on both sim sets (ΔMASE vs. pretrained −0.017 iid, −0.018 OOD; also better
+  than `ft-500`), but on M4 it is no better than the untouched pretrained model (ΔMASE +0.002,
+  CI [−0.000, +0.004]) and clearly worse than `ft-500` (+0.020, CI [+0.019, +0.022]). Its M4
+  98% coverage also dropped to 0.965. M4 sMAPE (12.89) is still below pretrained, so the loss
+  is concentrated in series where MASE penalizes larger errors. Training loss was flat after
+  ~500 steps (2.82 → 2.80 averaged over 500-step windows), so the extra 4,500 steps mostly moved
+  the model toward SarSim0-specific patterns rather than more general skill. This is a
+  sim-to-real gap or forgetting effect: more simulated training stops helping real data.
+- **The from-scratch ("simulation alone") run beats seasonal naive but not pretrained Chronos-2,
+  and does not yet transfer to M4.** On the sim sets it is clearly better than seasonal naive
+  (MASE 0.70 vs. 1.19 iid) but behind every pretrained-init model (0.62–0.63). It generalizes
+  worse to unseen seasonal periods (sim_ood_season MASE 0.83 vs. 0.70 iid), where fine-tuned
+  models barely change between the two sets. On M4 it is worse than seasonal naive (MASE 1.37
+  vs. 1.26, sMAPE 16.63 vs. 15.99), and its intervals are too narrow (M4 98% coverage 0.867).
+  Training loss was still falling at the end (4.10 → 3.11 averaged over 2,000-step windows,
+  vs. ~2.80 for the fine-tunes), so this run is undertrained rather than a negative result: it
+  saw 5.12M series, while the paper trains 250k–500k steps at batch 1,024–4,096 (App. E).
+- Caveats: one training seed per run (the CIs cover eval-set sampling, not run-to-run noise).
+  `ft-500` used the 200-step warmup sized for 5,000 steps, so 40% of its run was warmup. Only
+  the last checkpoint was kept (`save_total_limit: 1`), so we cannot see where between step 500
+  and 5,000 M4 performance peaked.
+- Next: keep every checkpoint (or evaluate during training) to find where real-data performance
+  peaks. Choose that step with a **real-data validation set that is not M4** (e.g. M4 Quarterly
+  or a GiftEval dataset); picking checkpoints by M4 Monthly score would make M4 no longer a
+  zero-shot test. Also worth trying: a lower fine-tuning learning rate, and a much longer
+  from-scratch run (or a larger effective batch), since its loss had not plateaued.
+- The CPU fine-tune is a small run (training loss 2.93 → 2.90). Read it as "the pipeline trains
+  and does no harm" rather than an improvement. It narrowed M4 intervals (98% coverage
+  0.973 → 0.960), which `ft-500` did not.
 
-```bash
-python scripts/check_generator.py
-python scripts/check_sarsim0_stream.py
-python scripts/check_chronos2_training_step.py
-```
+## Adding a model
 
-These checks confirm that generated values are finite, batch shapes are correct, and Chronos-2 can complete a training step.
+1. Write `src/sarsim_fm/models/<name>.py` with `load(path, runtime, context_length)` returning an
+   object with `predict_quantiles(contexts, horizon, levels, batch_size, season_lengths)` →
+   array `(n_series, horizon, n_levels)`. Add `train(cfg, runtime, run_dir)` if it is trainable.
+2. Register both in `src/sarsim_fm/models/__init__.py`.
+3. Add `configs/train/<name>-*.yaml` with `model.type: <name>`.
 
-### 8. Run the 100-step smoke test
+Next planned: Chronos-Small (T5), the paper's model. Chronos v1 mean-scales and bins values
+into tokens and trains with cross-entropy, so it needs an adapter from SarSim0 windows to
+Chronos v1 inputs rather than the Chronos-2 batch stream.
 
-```bash
-python -u scripts/train_streaming.py \
-  --output-dir outputs/smoke-100 \
-  --context-length 512 \
-  --prediction-length 18 \
-  --batch-size 2 \
-  --max-steps 100 \
-  --learning-rate 1e-6 \
-  --save-steps 50 \
-  --seed 42
-```
+## Known issues and caveats
 
-The run should complete 100 optimizer steps with finite losses and gradients.
+- **Exploding SarSim0 series.** About 3% of simulated series grow to SarSim0's ±1e6 clip (some
+  alternate sign each step) and ~0.25% have all-zero contexts. Training sees the same mix.
+  Candidate fix: reject or regenerate such series in the generator.
+- **Little diversity per training batch.** Each `data.batch_size` batch shares at most two SARIMA
+  parameter sets (see the held-out note above). Prefer gradient accumulation over very large
+  micro-batches; more `num_workers` also helps.
+- **Fine-tuning is not "simulation alone".** `init: pretrained` starts from `amazon/chronos-2`,
+  which was pretrained on real data. `init: scratch` matches the paper's setup.
+- **M4 may not be strictly zero-shot for pretrained Chronos models.** Check whether M4 is in
+  Chronos-2's pretraining corpus before calling those M4 numbers zero-shot.
+- `sfm check` times a raw training loop; inside the HF Trainer, steps take about 2× longer.
 
-### 9. Evaluate the trained checkpoint
+## Glossary
 
-```bash
-python scripts/evaluate_chronos2.py \
-  --model outputs/smoke-100/checkpoint-100 \
-  --output outputs/smoke-100/m4-monthly.parquet \
-  --batch-size 16
-```
+**Time-series basics**
 
-Expected results are approximately:
+| Term | Meaning |
+|---|---|
+| Time series | Values recorded at regular intervals, e.g. hourly kWh for one home. |
+| Context (history) | The past values the model gets to see. 512 steps here; M4 uses each series' full training history, cut to the last 512. |
+| Horizon / prediction length / target | How many future steps to forecast (18 here, M4 Monthly's official horizon), and the true values for those steps. |
+| Seasonality, period *s* | A pattern that repeats every *s* steps: 24 (time of day, hourly data), 7 (day of week, daily data), 12 (month of year). |
+| Trend, integration | Slow drift in level. An *integrated* series is a running sum of another series, so it wanders like a random walk. |
+| Point vs. probabilistic forecast | One number per future step vs. a whole distribution of likely values. |
+| Quantile *q* | A value the actual should fall below with probability *q*. q0.5 is the median; [q0.1, q0.9] is an 80% interval. |
 
-```text
-Mean sMAPE: 0.1315116
-Mean MASE:  0.9243003
-```
+**SarSim0**
 
-Small numerical differences may occur across GPU types and software builds. The main smoke-test success criteria are finite training values, completion of all 100 steps, successful checkpoint reload, and successful evaluation across all 48,000 series.
+| Term | Meaning |
+|---|---|
+| SARIMA | Seasonal AutoRegressive Integrated Moving Average, a classic statistical model. Each value is a weighted sum of recent values (AR, order *p*) and recent random shocks (MA, order *q*), plus the same at seasonal lags *s, 2s, …* (orders *P, Q*), then integrated (*d*, *D*). |
+| SarSim0 | A simulator that draws **new random SARIMA settings for every series**, so it can produce endless, varied training data. Each series is built as y = N(I(S(ε))): |
+| · S, base signal | SARIMA with random orders, coefficients constrained so the series stays stable, period *s* drawn from 0–52 (0 = no seasonality), fractional integration *d* ∈ [0, 1]. |
+| · I, SARIMA-2 | For half the series, a second seasonal series (the "envelope") is added to or multiplied with the base, e.g. a daily cycle whose strength changes over the week. Period pairs come from paper Table 9: (24,7), (7,52), (0,7), (0,4), (0,24), (0,52). |
+| · N, noiser | Heavy-tailed observation noise: Poisson (count-like), Gamma or Lognormal. |
+| Burn-in | The first 200 simulated points are discarded so start-up effects don't appear in the data. |
+| Seed | The number that fixes the random generator: the same seed gives the same series. Training and held-out sets use far-apart seeds. |
 
-## Current project files
+**Models**
 
-```text
-chronos2-sarsim0-anomaly-team/
-├── requirements-lock.txt
-├── data/m4/monthly.parquet
-├── external/sarsim0/
-├── scripts/check_chronos2_training_step.py
-├── scripts/check_generator.py
-├── scripts/check_sarsim0_stream.py
-├── scripts/evaluate_chronos2.py
-├── scripts/evaluate_seasonal_naive.py
-├── scripts/stage_m4_monthly.py
-├── scripts/train_streaming.py
-├── scripts/validate_m4_monthly.py
-├── outputs/baselines/chronos2-monthly.parquet
-└── outputs/smoke-100/
-    ├── checkpoint-100/
-    ├── m4-monthly.parquet
-    └── run-config.json
-```
+| Term | Meaning |
+|---|---|
+| Foundation forecaster | A large model trained on many series and then used on new series without retraining. |
+| Chronos-2 (`amazon/chronos-2`) | Amazon's ~120M-parameter transformer forecaster. It scales each series, reads the context in 16-step patches, and directly outputs 21 quantiles (0.01 … 0.99) for each future step. Amazon pretrained it on real and synthetic data. |
+| Chronos v1 / Chronos-Small (T5) | The earlier Chronos family and the model the SarSim0 paper trains. It turns values into tokens (scale, then bin into a fixed vocabulary), predicts the next token like a language model, and samples to get forecast distributions. Not in this repo yet. |
+| Seasonal naive | Baseline that repeats the last season (last 12 months for M4; the last value for sim sets, where season = 1). A model that can't beat it isn't useful. |
+| Checkpoint | Saved model weights, loadable for forecasting or further training. |
+
+**Training**
+
+| Term | Meaning |
+|---|---|
+| Fine-tune (`init: pretrained`) | Start from Amazon's trained weights and keep training on SarSim0. |
+| From scratch (`init: scratch`) | Same architecture, random weights, trained only on SarSim0: the paper's "simulation alone" setup. |
+| Step | One weight update (optimizer step). |
+| Batch size | Series per forward pass (`data.batch_size`). |
+| Gradient accumulation | Add up gradients from `grad_accum` batches before one update. Effective batch = `batch_size × grad_accum`, without the extra memory. |
+| Learning rate, warmup, scheduler | Size of each update; warmup ramps it up over the first `warmup_steps`, then the scheduler (linear/cosine) decays it. |
+| Quantile (pinball) loss | The training objective. For level *q*, under-predictions cost *q* × error and over-predictions cost (1 − *q*) × error, so each output learns its quantile. |
+| bf16 / tf32 / fp32 | Number precision. bf16 and tf32 are faster, lower-memory GPU formats; CPUs use full fp32. |
+| Streaming, `num_workers` | Training data is generated on the fly, never stored; workers generate batches in parallel with training. |
+
+**Evaluation**
+
+| Term | Meaning |
+|---|---|
+| Zero-shot | Forecasting a dataset without ever updating the model on it. |
+| Held-out set | Fixed test data that is never used for training or tuning. |
+| IID vs. OOD | *In-distribution*: drawn the same way as training data (`sim_iid`). *Out-of-distribution*: deliberately different (`sim_ood_season`, periods 60–120). |
+| M4 Monthly | 48,000 real monthly series (finance, industry, demographics, …) from the 2018 M4 forecasting competition, with an official 18-month test period. |
+| Metrics | sMAPE, MASE, SQL, WQL, coverage: see [Metrics](#metrics). |
+| Forecast-residual anomaly detection | Residual = actual − forecast. Flag a reading when it falls outside the forecast interval, e.g. [q0.01, q0.99]. The project's next phase. |

@@ -1,0 +1,33 @@
+# Shared defaults for Chronos-2 runs. Other configs `inherit:` this and override fields.
+
+model:
+  type: chronos2
+  base: amazon/chronos-2
+  init: pretrained          # pretrained = fine-tune; scratch = same architecture, random weights
+
+data:
+  context_length: 512
+  prediction_length: 18
+  batch_size: 8             # series per micro-batch (SarSim0 builds the batch itself)
+  seed: 42
+  num_workers: 0            # >0 generates SarSim0 batches in parallel; worker i uses seed + i
+  sarsim: {}                # SarSimConfig overrides, merged over SARSIM_DEFAULTS
+
+train:
+  max_steps: 1000
+  learning_rate: 1.0e-5
+  lr_scheduler: linear
+  warmup_steps: 0
+  grad_accum: 1
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_steps: 500
+
+runtime:
+  device: auto              # auto | cpu | cuda | cuda:N | mps; CLI --device wins
+  precision: auto           # auto (bf16 on supporting GPUs) | bf16 | fp32
+
+eval:
+  datasets: [sim_iid, sim_ood_season, m4_monthly]   # missing sets are skipped
+  batch_size: 64

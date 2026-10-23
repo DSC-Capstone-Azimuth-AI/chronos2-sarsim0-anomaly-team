@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sarsim-fm"
+version = "0.1.0"
+description = "D05 Azimuth anomaly team: train forecasting models on SarSim0 and evaluate zero-shot."
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "chronos-forecasting==2.3.2",
+  "transformers==5.20.2",
+  "accelerate==1.15.0",
+  "numpy==2.4.6",
+  "pandas==3.0.6",
+  "pyarrow==26.0.0",
+  "pyyaml==6.0.3",
+  # Pinned to the commit the original experiments used.
+  "sarsim0 @ git+https://github.com/kashif/sarsim0@71306403a60dd22df031453dbc51aa0567babaec",
+]
+
+[project.optional-dependencies]
+# Pick exactly one: `uv sync --extra cpu` (laptops) or `uv sync --extra cu130` (NVIDIA GPUs).
+cpu = ["torch==2.14.1"]
+cu130 = ["torch==2.14.1"]
+notebooks = ["jupyterlab", "matplotlib"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+sfm = "sarsim_fm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu130" }]]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
