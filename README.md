@@ -232,10 +232,12 @@ From `sfm results` (RTX 3070 Ti for evaluation, context length 512):
 | `chronos2-ft-cpu` (fine-tune, 1k steps × batch 8, lr 1e-5, CPU) | 8k | 24.7 min (CPU) | 0.6289 | 0.5216 | 0.6158 | 0.5045 | 13.08 | 0.9174 | 0.960 |
 | `ft-500` (fine-tune, `chronos2-ft-gpu` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | 0.6248 | 0.5176 | 0.6105 | 0.4987 | **12.75** | **0.9038** | 0.973 |
 | `chronos2-ft-gpu-3070ti` (fine-tune, full `chronos2-ft-gpu`: 5k steps × 256, lr 1e-5) | 1.28M | 1.83 h (3070 Ti) | **0.6176** | **0.5114** | **0.6054** | **0.4937** | 12.89 | 0.9242 | 0.965 |
+| `chronos2-scratch-gpu` (random init, SarSim0 only: 20k steps × 64 × grad_accum 4, lr 1e-4 cosine) | 5.12M | 7.21 h (3070 Ti) | 0.7024 | 0.5795 | 0.8300 | 0.6726 | 16.63 | 1.3712 | 0.867 |
 
 Commands:
-`sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500` and
-`sfm train configs/train/chronos2-ft-gpu.yaml --set name=chronos2-ft-gpu-3070ti`.
+`sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500`,
+`sfm train configs/train/chronos2-ft-gpu.yaml --set name=chronos2-ft-gpu-3070ti` and
+`sfm train configs/train/chronos2-scratch-gpu.yaml`.
 
 - The pretrained Chronos-2 M4 numbers reproduce the original pipeline exactly (sMAPE 0.1311438,
   MASE 0.9220801).
@@ -253,6 +255,15 @@ Commands:
   ~500 steps (2.82 → 2.80 averaged over 500-step windows), so the extra 4,500 steps mostly moved
   the model toward SarSim0-specific patterns rather than more general skill. This is a
   sim-to-real gap or forgetting effect: more simulated training stops helping real data.
+- **The from-scratch ("simulation alone") run beats seasonal naive but not pretrained Chronos-2,
+  and does not yet transfer to M4.** On the sim sets it is clearly better than seasonal naive
+  (MASE 0.70 vs. 1.19 iid) but behind every pretrained-init model (0.62–0.63). It generalizes
+  worse to unseen seasonal periods (sim_ood_season MASE 0.83 vs. 0.70 iid), where fine-tuned
+  models barely change between the two sets. On M4 it is worse than seasonal naive (MASE 1.37
+  vs. 1.26, sMAPE 16.63 vs. 15.99), and its intervals are too narrow (M4 98% coverage 0.867).
+  Training loss was still falling at the end (4.10 → 3.11 averaged over 2,000-step windows,
+  vs. ~2.80 for the fine-tunes), so this run is undertrained rather than a negative result: it
+  saw 5.12M series, while the paper trains 250k–500k steps at batch 1,024–4,096 (App. E).
 - Caveats: one training seed per run (the CIs cover eval-set sampling, not run-to-run noise).
   `ft-500` used the 200-step warmup sized for 5,000 steps, so 40% of its run was warmup. Only
   the last checkpoint was kept (`save_total_limit: 1`), so we cannot see where between step 500
@@ -260,8 +271,8 @@ Commands:
 - Next: keep every checkpoint (or evaluate during training) to find where real-data performance
   peaks. Choose that step with a **real-data validation set that is not M4** (e.g. M4 Quarterly
   or a GiftEval dataset); picking checkpoints by M4 Monthly score would make M4 no longer a
-  zero-shot test. Also worth trying: lower learning rate, and the from-scratch run, where there
-  is no pretrained knowledge to forget.
+  zero-shot test. Also worth trying: a lower fine-tuning learning rate, and a much longer
+  from-scratch run (or a larger effective batch), since its loss had not plateaued.
 - The CPU fine-tune is a small run (training loss 2.93 → 2.90). Read it as "the pipeline trains
   and does no harm" rather than an improvement. It narrowed M4 intervals (98% coverage
   0.973 → 0.960), which `ft-500` did not.
