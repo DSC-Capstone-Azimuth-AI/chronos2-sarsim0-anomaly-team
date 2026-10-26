@@ -31,3 +31,10 @@ runtime:
 eval:
   datasets: [sim_iid, sim_ood_season, m4_monthly]   # missing sets are skipped
   batch_size: 64
+
+wandb:
+  enabled: false            # true logs to W&B (needs `uv sync --extra wandb` + `wandb login`)
+  group: null               # experiment question this run answers, e.g. sarsim-season-ablation
+  tags: []                  # model.type, model.init and device are added automatically
+  # project / entity default to sarsim-fm / chewycrunch-ucsd (src/sarsim_fm/tracking.py);
+  # WANDB_PROJECT / WANDB_ENTITY env vars override them

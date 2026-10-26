@@ -231,6 +231,9 @@ __marimo__/
 # Training runs, checkpoints, eval outputs
 /outputs/
 
+# Local W&B run files (synced copies live on wandb.ai)
+/wandb/
+
 # Cloned third-party repos (M4 data)
 /external/
 

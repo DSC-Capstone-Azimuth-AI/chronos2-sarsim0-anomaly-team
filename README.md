@@ -83,10 +83,12 @@ configs/
   train/chronos2-ft-cpu.yaml     fine-tune on a laptop CPU (~25 min)
   train/chronos2-ft-gpu.yaml     fine-tune on one GPU (~2 h on a 3070 Ti)
   train/chronos2-scratch-gpu.yaml  random init, SarSim0 only ("simulation alone")
+  sweeps/chronos2-ft-lr.yaml     example W&B sweep (learning rate x seasonal range)
 src/sarsim_fm/
   cli.py          `sfm` commands
   config.py       YAML loading, `inherit:`, `--set key=value` overrides
   runtime.py      device/precision selection, environment + git info for run records
+  tracking.py     optional Weights & Biases logging (no-op unless enabled)
   metrics.py      sMAPE, MASE, scaled quantile loss, coverage
   evaluate.py     score any model on any eval set, save per-series quantiles
   data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
@@ -114,6 +116,7 @@ and a `run-config.json` behind it.
 | `models/naive.py` | Seasonal naive baseline. | `SeasonalNaive` |
 | `evaluate.py` | Runs any forecaster on any eval set, scores each series, and saves quantiles plus a summary. | `evaluate`, `save_eval` |
 | `metrics.py` | The metric formulas. | `smape`, `mase`, `naive_scale`, `scaled_quantile_loss`, `quantile_loss`, `coverage` |
+| `tracking.py` | Optional W&B logging: opens a run with the resolved config, writes eval metrics and timing to its summary. Does nothing unless `wandb.enabled` (or under `wandb agent`). | `start_run`, `log_eval`, `finish` |
 
 What `sfm train configs/train/chronos2-ft-cpu.yaml` calls, in order:
 
@@ -194,6 +197,51 @@ checkpoint-final/    loadable with Chronos2Pipeline.from_pretrained / `--model c
 eval/<set>.parquet   per-series metrics + 13 quantiles (0.01 … 0.99) for every horizon step
 eval/summary.json    aggregate metrics per eval set
 ```
+
+## Experiment tracking (Weights & Biases)
+
+Optional. Local files under `outputs/` stay the source of truth; W&B adds a shared, filterable
+table of every run across machines, plus live loss curves.
+
+```bash
+uv sync --extra cu130 --extra wandb      # or --extra cpu
+uv run wandb login                       # once per machine (API key from wandb.ai/authorize)
+```
+
+Turn it on per run (or set `wandb.enabled: true` in a config):
+
+```bash
+uv run sfm train configs/train/chronos2-ft-gpu.yaml \
+  --set wandb.enabled=true --set wandb.group=lr-search
+uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --wandb   # baseline rows
+```
+
+How runs are organized, all in one project (`sarsim-fm` under `chewycrunch-ucsd`):
+
+| W&B field | Holds | Use it to |
+|---|---|---|
+| `config` | the full resolved YAML (after `inherit:` and `--set`) | filter/group by `model.type`, `data.sarsim.*`, `train.*` |
+| `group` | `wandb.group`: the question the run answers | e.g. `sarsim-season-ablation`, `lr-search` |
+| `job_type` | `train` or `baseline` | hide baselines or keep them as reference rows |
+| `tags` | `model.type`, `model.init`, device + `wandb.tags` | quick filters |
+| summary | `eval/<set>/<metric>` (sMAPE, MASE, SQL, WQL, coverage), `timing/*` | sort the runs table |
+
+The Hugging Face Trainer logs loss, learning rate and grad norm to the same run while training.
+
+**Sweeps** (cheap searches only; long runs stay as files in `configs/train/`):
+
+```bash
+uv run wandb sweep configs/sweeps/chronos2-ft-lr.yaml    # prints the sweep id
+uv run wandb agent chewycrunch-ucsd/sarsim-fm/<id>       # on each machine that should take runs
+```
+
+The agent runs `sfm train <config> key.path=value ...`; bare `key=value` arguments after the
+config path work like `--set`. Each sweep run's directory gets the W&B run id appended. Sweep on
+the simulated held-out sets, not M4: M4 is the zero-shot real-data test and should not steer
+model selection.
+
+`WANDB_MODE=offline` logs locally (`wandb sync` later); `WANDB_PROJECT` / `WANDB_ENTITY` override
+the defaults in `src/sarsim_fm/tracking.py`.
 
 ## Eval sets
 

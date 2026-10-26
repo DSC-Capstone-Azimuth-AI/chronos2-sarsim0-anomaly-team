@@ -25,6 +25,8 @@ cpu = ["torch==2.14.1"]
 cu130 = ["torch==2.14.1"]
 notebooks = ["jupyterlab", "matplotlib"]
 dev = ["pytest", "ruff"]
+# Experiment tracking (`wandb.enabled` in configs); `wandb login` once per machine.
+wandb = ["wandb==0.31.0"]
 
 [project.scripts]
 sfm = "sarsim_fm.cli:main"
