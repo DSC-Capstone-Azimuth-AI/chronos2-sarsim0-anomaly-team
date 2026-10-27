@@ -98,7 +98,7 @@ uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2
 # 3. Train; the final checkpoint is evaluated on every set listed in `eval.datasets`
 uv run sfm train configs/train/chronos2-ft-cpu.yaml
 # Modify settings on the fly
-uv run sfm train configs/train/chronos2-ft-gpu.yaml --set train.max_steps=500 --set name=ft-500
+uv run sfm train configs/train/chronos2-ft-5k.yaml --set train.max_steps=500 --set name=chronos2-ft-500
 
 # 4. Every result so far, as a markdown table (paste into the Experiments log)
 uv run sfm results
@@ -144,8 +144,9 @@ uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>
 | [docs/evaluation.md](docs/evaluation.md) | Eval sets, metric definitions, known data issues |
 | [docs/results.md](docs/results.md) | Experiments log: every run vs. baselines, with analysis |
 | [docs/wandb.md](docs/wandb.md) | Weights & Biases: setup, commands, sweeps, backfill |
+| [docs/naming.md](docs/naming.md) | How to name runs, configs and W&B groups |
 | [docs/glossary.md](docs/glossary.md) | Time-series, SarSim0, model, training and evaluation terms |
 
-**Current headline** ([details](docs/results.md)): a short fine-tune of Chronos-2 on SarSim0 only (`ft-500`)
+**Current headline** ([details](docs/results.md)): a short fine-tune of Chronos-2 on SarSim0 only (`chronos2-ft-500`)
 is the best model on M4 (MASE 0.904 vs. 0.922 pretrained); training 10× longer helps simulated
 data but erases the M4 gain; the from-scratch run is still undertrained.

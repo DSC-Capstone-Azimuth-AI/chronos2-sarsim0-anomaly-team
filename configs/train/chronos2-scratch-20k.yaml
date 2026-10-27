@@ -2,7 +2,7 @@
 # The paper trains its models 250k-500k steps at batch 1024-4096 (App. E); this is a
 # first overnight budget run (~7 h on a 3070 Ti) to see whether loss and held-out metrics move.
 inherit: _base-chronos2.yaml
-name: chronos2-scratch-gpu
+name: chronos2-scratch-20k
 
 model:
   init: scratch

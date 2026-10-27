@@ -15,6 +15,11 @@ from pathlib import Path
 DEFAULTS = {"project": "sarsim-fm", "entity": "chewycrunch-ucsd", "group": None, "tags": []}
 
 
+def baseline_name(model_spec: str) -> str:
+    """`chronos2:amazon/chronos-2` → `baseline-chronos2-amazon-chronos-2` (docs/naming.md)."""
+    return "baseline-" + re.sub(r"[^a-z0-9]+", "-", model_spec.lower()).strip("-")
+
+
 def in_sweep() -> bool:
     """True when launched by `wandb agent`."""
     return "WANDB_SWEEP_ID" in os.environ
@@ -127,7 +132,8 @@ def import_run(run_dir: Path, rel_name: str, group: str | None) -> str:
         if exists:
             return f"skipped (exists as {run_id})"
 
-    run = start_run(cfg, job_type, rel_name, extra_tags=tags, id=run_id)
+    name = rel_name if job_type == "train" else baseline_name(cfg["model"]["spec"])
+    run = start_run(cfg, job_type, name, extra_tags=tags, id=run_id)
     try:
         log_path = run_dir / "train-log.csv"
         if log_path.exists():

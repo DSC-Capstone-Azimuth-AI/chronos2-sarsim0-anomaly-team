@@ -1,7 +1,7 @@
 # Single-GPU fine-tune. Effective batch 64 x 4 = 256 series per optimizer step.
 # RTX 3070 Ti (8 GB, bf16): batch 64 peaks at ~3.8 GB; ~1.3 s/optimizer step → 5000 steps ≈ 2 h.
 inherit: _base-chronos2.yaml
-name: chronos2-ft-gpu
+name: chronos2-ft-5k
 
 data:
   batch_size: 64

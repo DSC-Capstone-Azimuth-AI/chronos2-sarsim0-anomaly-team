@@ -126,7 +126,7 @@ def cmd_eval(args) -> None:
             "data": {"context_length": args.context_length},
             "runtime": {"device": str(runtime.device)},
         }
-        tracking.start_run(run_cfg, "baseline", _safe_name(spec), extra_tags=["baseline"])
+        tracking.start_run(run_cfg, "baseline", tracking.baseline_name(spec), extra_tags=["baseline"])
         try:
             _run_eval(spec, out_dir, args.datasets, args, runtime, {})
         except BaseException:

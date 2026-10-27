@@ -40,7 +40,7 @@ owns it for an invite. Until then, log to your own account with `WANDB_ENTITY=<y
 | Task | Command |
 |---|---|
 | Train and log | `uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>` |
-| Quick test that logging works | `uv run sfm train configs/train/chronos2-ft-smoke.yaml train.max_steps=20 --set name=wandb-test --set wandb.enabled=true --set wandb.group=dev-test --set eval.datasets=[sim_iid]` |
+| Quick test that logging works | `uv run sfm train configs/train/chronos2-ft-smoke.yaml train.max_steps=20 --set name=dev-wandb-test --set wandb.enabled=true --set wandb.group=dev-test --set eval.datasets=[sim_iid]` |
 | Log baselines | `uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --wandb` |
 | Upload finished runs from `outputs/` | `uv run sfm wandb-import` (or `--only <run-folder>`) |
 | Start a sweep | `uv run wandb sweep configs/sweeps/<file>.yaml` → prints `<sweep-id>` |
@@ -80,11 +80,12 @@ The three things we tune map to config namespaces, so they compare across models
 - **Model**: `model.type` (+ model-specific keys under `model.*`)
 - **Training recipe**: `train.*`
 
-### Group names
+### Names and groups
 
-Name a group after the question, not the date or the person: `lr-search`, `scratch-vs-ft`,
-`sarsim-season-ablation`, `batch-size-scaling`. Use `dev-test` for plumbing checks you will
-delete. Imported runs land in `imported`, baselines in `baselines`.
+Run names follow [naming.md](naming.md): `<model>-<init>-<steps>[-<what's different>]`, e.g.
+`chronos2-ft-500-lr3e-5`, with no device in the name. Name a group after the question, not the
+date or the person: `lr-search`, `scratch-vs-ft`, `sarsim-season-ablation`. Use `dev-test` for
+plumbing checks you will delete. Imported runs land in `imported`, baselines in `baselines`.
 
 ## Logging a training run
 
@@ -92,7 +93,7 @@ Logging is off by default (`wandb.enabled: false` in `configs/train/_base-chrono
 smoke tests never need a login. Turn it on per run:
 
 ```bash
-uv run sfm train configs/train/chronos2-ft-gpu.yaml \
+uv run sfm train configs/train/chronos2-ft-5k.yaml \
   --set wandb.enabled=true --set wandb.group=lr-search --set wandb.tags=[first-pass]
 ```
 
@@ -124,7 +125,7 @@ Runs finished before W&B was set up (or with it off) can be uploaded from their 
 
 ```bash
 uv run sfm wandb-import                      # every run under outputs/ with eval/summary.json
-uv run sfm wandb-import --only ft-500        # one run folder
+uv run sfm wandb-import --only ft-500        # one run folder (outputs/ft-500)
 uv run sfm wandb-import --group my-group     # group for imported train runs (default: imported)
 ```
 
@@ -176,10 +177,10 @@ command:
   - run
   - sfm
   - train
-  - configs/train/chronos2-ft-gpu.yaml
+  - configs/train/chronos2-ft-5k.yaml
   - ${args_no_hyphens}       # must come right after the config path
   - --set
-  - name=sweep-ft-lr
+  - name=chronos2-ft-1k-sweep-lr
   - --set
   - train.max_steps=1000
   - --set
@@ -187,10 +188,10 @@ command:
 ```
 
 How it works: the agent turns each sample into
-`sfm train configs/train/chronos2-ft-gpu.yaml train.learning_rate=3.2e-05 data.sarsim.s_range=[0, 24] --set ...`.
+`sfm train configs/train/chronos2-ft-5k.yaml train.learning_rate=3.2e-05 data.sarsim.s_range=[0, 24] --set ...`.
 Bare `key=value` arguments after the config path work like `--set`, but **only directly after
 the config path**, which is why `${args_no_hyphens}` comes before the `--set` lines. Each sweep
-run's folder gets the W&B run id appended (`outputs/sweep-ft-lr-<id>/`) so runs don't overwrite
+run's folder gets the W&B run id appended (`outputs/chronos2-ft-1k-sweep-lr-<id>/`) so runs don't overwrite
 each other. Logging is turned on automatically under an agent.
 
 ### Rules for sweeps

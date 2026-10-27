@@ -24,8 +24,8 @@ configs/
   train/_base-chronos2.yaml      shared defaults; other train configs `inherit:` it
   train/chronos2-ft-smoke.yaml   original 100-step plumbing check
   train/chronos2-ft-cpu.yaml     fine-tune on a laptop CPU (~25 min)
-  train/chronos2-ft-gpu.yaml     fine-tune on one GPU (~2 h on a 3070 Ti)
-  train/chronos2-scratch-gpu.yaml  random init, SarSim0 only ("simulation alone")
+  train/chronos2-ft-5k.yaml      fine-tune, 5k steps on one GPU (~2 h on a 3070 Ti)
+  train/chronos2-scratch-20k.yaml  random init, SarSim0 only ("simulation alone"), 20k steps
   sweeps/chronos2-ft-lr.yaml     example W&B sweep (learning rate x seasonal range)
 src/sarsim_fm/
   cli.py          `sfm` commands
@@ -37,7 +37,7 @@ src/sarsim_fm/
   data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
   models/         registry + one file per model family (chronos2, seasonal naive)
 tests/            fast unit tests (`uv run pytest`)
-docs/             guides: architecture, evaluation, results, glossary, wandb
+docs/             guides: architecture, evaluation, results, naming, glossary, wandb
 data/  outputs/  external/        generated locally, git-ignored
 ```
 

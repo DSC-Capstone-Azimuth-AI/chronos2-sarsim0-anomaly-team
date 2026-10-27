@@ -1,4 +1,5 @@
 # Shared defaults for Chronos-2 runs. Other configs `inherit:` this and override fields.
+# Run names follow docs/naming.md: <model>-<init>-<steps>[-<what's different>].
 
 model:
   type: chronos2

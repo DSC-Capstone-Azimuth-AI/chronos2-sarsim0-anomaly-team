@@ -26,10 +26,10 @@ command:
   - run
   - sfm
   - train
-  - configs/train/chronos2-ft-gpu.yaml
+  - configs/train/chronos2-ft-5k.yaml
   - ${args_no_hyphens}       # must come right after the config path
   - --set
-  - name=sweep-ft-lr
+  - name=chronos2-ft-1k-sweep-lr
   - --set
   - train.max_steps=1000
   - --set
