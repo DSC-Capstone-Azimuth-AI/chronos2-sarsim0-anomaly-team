@@ -47,7 +47,8 @@ flowchart LR
    confirm SarSim0 and a few training steps work on this machine and how fast they run.
 2. **Eval sets** (`sfm make-sim`, `sfm stage-m4`): write fixed test data to `data/eval/`. The
    model never trains on these. Two are simulated (one like training, one with seasonal periods
-   training never produces) and one is real (M4 Monthly).
+   training never produces) and two are real: M4 Quarterly for choosing between models and M4
+   Monthly as the final test.
 3. **Baselines** (`sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2`): the bar
    to beat. Seasonal naive is the "dumb" forecast; pretrained Chronos-2 is Amazon's model before
    we touch it.
@@ -90,7 +91,7 @@ uv run sfm make-sim                        # data/eval/sim_iid + sim_ood_season 
 git clone --depth 1 --filter=blob:none --sparse \
   https://github.com/Mcompetitions/M4-methods.git external/M4-data
 git -C external/M4-data sparse-checkout set Dataset
-uv run sfm stage-m4                        # data/eval/m4_monthly
+uv run sfm stage-m4                        # data/eval/m4_monthly (test) + m4_quarterly (validation)
 
 # 2. Baselines
 uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2

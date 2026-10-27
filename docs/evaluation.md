@@ -12,7 +12,15 @@ All eval sets share one parquet format (`item_id`, `context`, `target`, `season_
 |---|---:|---:|---:|---|
 | `sim_iid` | 2,000 | 18 | 1 | Same SarSim0 distribution as training, seed 1000003 |
 | `sim_ood_season` | 2,000 | 18 | 1 | SarSim0 with periods 60–120; training only produces ≤ 52 |
-| `m4_monthly` | 48,000 | 18 | 12 | Official M4 train/test split |
+| `m4_quarterly` | 24,000 | 8 | 4 | **Validation.** Real data for choosing between models (sweeps, checkpoints). Official M4 split |
+| `m4_monthly` | 48,000 | 18 | 12 | **Test.** The zero-shot real-data result. Never used to choose a model. Official M4 split |
+
+**Validation vs. test.** Pick learning rates, steps and checkpoints by `m4_quarterly`, then report
+`m4_monthly` once for the chosen model. If M4 Monthly scores decided which model to keep, it would
+stop being a zero-shot test. Simulated scores are not a substitute: `chronos2-ft-5k` is the best
+model on both sim sets but no better than pretrained Chronos-2 on M4 Monthly
+([results](results.md)). Both M4 subsets come from the same competition, so they are related but
+share no series.
 
 Held-out series are generated one per call: SarSim0 draws one set of SARIMA parameters per
 vectorized call, so generating them in bulk would yield only a few distinct processes.

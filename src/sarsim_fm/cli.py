@@ -68,9 +68,10 @@ def cmd_check(args) -> None:
 
 
 def cmd_stage_m4(args) -> None:
-    from sarsim_fm.data.m4 import stage_m4_monthly
+    from sarsim_fm.data.m4 import M4_ROOT, stage_m4
 
-    stage_m4_monthly(Path(args.m4_root)) if args.m4_root else stage_m4_monthly()
+    for freq in args.freq:
+        stage_m4(freq, Path(args.m4_root) if args.m4_root else M4_ROOT)
 
 
 def cmd_make_sim(args) -> None:
@@ -286,8 +287,12 @@ def main(argv: list[str] | None = None) -> None:
     _add_runtime_args(p)
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("stage-m4", help="stage M4 Monthly into data/eval/m4_monthly.parquet")
+    p = sub.add_parser("stage-m4", help="stage M4 subsets into data/eval/m4_<freq>.parquet")
     p.add_argument("--m4-root", help="checkout of Mcompetitions/M4-methods (default external/M4-data)")
+    p.add_argument(
+        "--freq", nargs="+", default=["monthly", "quarterly"], choices=["monthly", "quarterly"],
+        help="M4 subsets to stage (default: both; monthly = test, quarterly = validation)",
+    )
     p.set_defaults(func=cmd_stage_m4)
 
     p = sub.add_parser("make-sim", help="generate fixed held-out SarSim0 eval sets")

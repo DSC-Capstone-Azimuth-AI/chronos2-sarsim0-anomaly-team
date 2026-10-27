@@ -25,7 +25,7 @@ Suffix tokens:
 | `s<lo>-<hi>` | SarSim0 seasonal range `data.sarsim.s_range` | `chronos2-ft-500-s0-24` |
 | `warm<N>` | Warmup steps | `chronos2-ft-500-warm25` |
 | `seed<N>` | Data seed, for repeats of the same setup | `chronos2-ft-500-seed7` |
-| `sweep-<what>` | Sweep runs; the W&B run id is appended automatically | `chronos2-ft-1k-sweep-lr-x8k2p1` |
+| `sweep-<what>` | Sweep runs; the W&B run id is appended automatically | `chronos2-ft-500-sweep-lr-x8k2p1` |
 
 Rules:
 
@@ -55,7 +55,8 @@ Rules:
 | `<model>-ft-smoke.yaml` | 100-step plumbing check; default for `sfm check` | `chronos2-ft-smoke` |
 | `<model>-ft-cpu.yaml` | Small fine-tune sized for a laptop CPU | `chronos2-ft-1k-b8` |
 
-Sweeps: `configs/sweeps/<model>-<init>-<what is searched>.yaml`, e.g. `chronos2-ft-lr.yaml`.
+Sweeps: `configs/sweeps/<model>-<init>-<steps>-<what is searched>.yaml`, e.g. `chronos2-ft-500-lr.yaml`.
+Search one question per sweep.
 
 ## W&B groups
 

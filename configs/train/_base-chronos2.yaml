@@ -30,7 +30,8 @@ runtime:
   precision: auto           # auto (bf16 on supporting GPUs) | bf16 | fp32
 
 eval:
-  datasets: [sim_iid, sim_ood_season, m4_monthly]   # missing sets are skipped
+  # m4_quarterly = real-data validation (model selection); m4_monthly = zero-shot test. Missing sets are skipped.
+  datasets: [sim_iid, sim_ood_season, m4_quarterly, m4_monthly]
   batch_size: 64
 
 wandb:

@@ -66,7 +66,7 @@ is to compare across all of them in one table. A run is described by:
 | **summary** | `eval/<set>/<metric>` and `timing/*` | Sort and compare runs |
 | **charts** | `train/loss`, `train/learning_rate`, `train/grad_norm` per step | Watch training live |
 
-Summary keys, per eval set (`sim_iid`, `sim_ood_season`, `m4_monthly`):
+Summary keys, per eval set (`sim_iid`, `sim_ood_season`, `m4_quarterly`, `m4_monthly`):
 
 ```text
 eval/<set>/smape  eval/<set>/mase  eval/<set>/sql  eval/<set>/wql
@@ -153,25 +153,20 @@ Use them for **cheap, short runs** (fine-tune LR, short-budget SarSim0 compariso
 
 ### Writing a sweep file
 
-Start from [`configs/sweeps/chronos2-ft-lr.yaml`](../configs/sweeps/chronos2-ft-lr.yaml):
+Start from [`configs/sweeps/chronos2-ft-500-lr.yaml`](../configs/sweeps/chronos2-ft-500-lr.yaml):
 
 ```yaml
 program: src/sarsim_fm/cli.py
 project: sarsim-fm
 entity: chewycrunch-ucsd
-name: chronos2-ft-lr
-method: random              # random | grid | bayes
-run_cap: 12                 # stop after this many runs
+name: chronos2-ft-500-lr
+method: grid                # grid | random | bayes
 metric:
-  name: eval/sim_ood_season/wql
+  name: eval/m4_quarterly/sql   # real-data validation set
   goal: minimize
 parameters:                 # any config field, as a dotted path
   train.learning_rate:
-    distribution: log_uniform_values
-    min: 1.0e-6
-    max: 1.0e-4
-  data.sarsim.s_range:
-    values: [[0, 24], [0, 52]]
+    values: [1.0e-6, 3.0e-6, 1.0e-5, 3.0e-5]
 command:
   - uv
   - run
@@ -180,34 +175,37 @@ command:
   - configs/train/chronos2-ft-5k.yaml
   - ${args_no_hyphens}       # must come right after the config path
   - --set
-  - name=chronos2-ft-1k-sweep-lr
+  - name=chronos2-ft-500-sweep-lr
   - --set
-  - train.max_steps=1000
+  - train.max_steps=500
   - --set
-  - eval.datasets=[sim_iid,sim_ood_season]
+  - train.warmup_steps=50
+  - --set
+  - eval.datasets=[sim_iid,sim_ood_season,m4_quarterly]
 ```
 
 How it works: the agent turns each sample into
-`sfm train configs/train/chronos2-ft-5k.yaml train.learning_rate=3.2e-05 data.sarsim.s_range=[0, 24] --set ...`.
+`sfm train configs/train/chronos2-ft-5k.yaml train.learning_rate=3e-06 --set ...`.
 Bare `key=value` arguments after the config path work like `--set`, but **only directly after
 the config path**, which is why `${args_no_hyphens}` comes before the `--set` lines. Each sweep
-run's folder gets the W&B run id appended (`outputs/chronos2-ft-1k-sweep-lr-<id>/`) so runs don't overwrite
-each other. Logging is turned on automatically under an agent.
+run's folder gets the W&B run id appended (`outputs/chronos2-ft-500-sweep-lr-<id>/`) so runs
+don't overwrite each other. Logging is turned on automatically under an agent.
 
 ### Rules for sweeps
 
-- **Never optimize on M4.** M4 is the real-data zero-shot test; tuning on it leaks the test into
-  model selection. Use `eval/sim_iid/*` or `eval/sim_ood_season/*` as the sweep metric, and
-  leave `m4_monthly` out of `eval.datasets` to save time. Evaluate the winner on M4 afterwards
-  with a normal `sfm train` run.
-- Keep runs short (`train.max_steps`) so the sweep finishes. `run_cap` bounds the total.
-- `random` is a good default; `bayes` needs more runs to pay off; `grid` only for small,
-  discrete spaces.
+- **Score on `m4_quarterly`, never on `m4_monthly`.** M4 Monthly is the zero-shot test; tuning
+  on it leaks the test into model selection. Leave it out of `eval.datasets` and check the
+  winner on it afterwards with a normal `sfm train` run. Sim scores are not a good selection
+  metric either: in our results the best sim model was not the best real-data model.
+- **One question per sweep** (learning rate, *or* SarSim0 settings), so each change can be read
+  on its own.
+- Keep runs short (`train.max_steps`). `grid` for a few discrete values; `random` with
+  `run_cap` for wider ranges; `bayes` only once you have many runs.
 
 ### Running it
 
 ```bash
-uv run wandb sweep configs/sweeps/chronos2-ft-lr.yaml      # once; prints the sweep id
+uv run wandb sweep configs/sweeps/chronos2-ft-500-lr.yaml  # once; prints the sweep id
 uv run wandb agent chewycrunch-ucsd/sarsim-fm/<sweep-id>   # on every machine that should help
 ```
 

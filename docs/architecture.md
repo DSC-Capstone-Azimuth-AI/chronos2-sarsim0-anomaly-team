@@ -26,7 +26,7 @@ configs/
   train/chronos2-ft-cpu.yaml     fine-tune on a laptop CPU (~25 min)
   train/chronos2-ft-5k.yaml      fine-tune, 5k steps on one GPU (~2 h on a 3070 Ti)
   train/chronos2-scratch-20k.yaml  random init, SarSim0 only ("simulation alone"), 20k steps
-  sweeps/chronos2-ft-lr.yaml     example W&B sweep (learning rate x seasonal range)
+  sweeps/chronos2-ft-500-lr.yaml learning-rate grid for the 500-step fine-tune
 src/sarsim_fm/
   cli.py          `sfm` commands
   config.py       YAML loading, `inherit:`, `--set key=value` overrides
@@ -53,7 +53,7 @@ and a `run-config.json` behind it.
 | `config.py` | Reads a YAML config, merges the file named in `inherit:` underneath it, and applies `--set` overrides. | `load_config`, `set_dotted` |
 | `runtime.py` | Decides where and how to compute: device (`auto` → CUDA if present, else CPU) and precision (bf16 on capable GPUs). Collects versions, GPU name and git SHA for `run-config.json`. | `resolve_runtime`, `environment_info` |
 | `data/sim.py` | Everything SarSim0. Turns the YAML `sarsim:` block into a `SarSimConfig` (defaults: univariate, no covariates, length 6,000), builds the endless training stream, and writes the fixed held-out sets. | `sarsim_config`, `training_stream`, `make_heldout_split` |
-| `data/m4.py` | Converts the M4 Monthly CSVs into the eval-set format and checks counts and horizons. | `stage_m4_monthly` |
+| `data/m4.py` | Converts M4 Monthly (test) and Quarterly (validation) CSVs into the eval-set format and checks counts and horizons. | `stage_m4`, `FREQUENCIES` |
 | `data/eval_sets.py` | The single on-disk format all eval sets share, with validation on write. | `write_eval_set`, `load_eval_set`, `EvalSet` |
 | `models/__init__.py` | The registry: maps a spec like `chronos2:outputs/run/checkpoint-final` to the code that loads or trains it. | `load_forecaster`, `get_trainer`, `Forecaster` |
 | `models/chronos2.py` | Chronos-2 specifics: load a checkpoint for forecasting, build a model (pretrained or random weights), train it with the Hugging Face Trainer, and time raw training steps for `sfm check`. | `load`, `build_model`, `train`, `timed_steps` |
