@@ -118,13 +118,14 @@ def import_run(run_dir: Path, rel_name: str, group: str | None) -> str:
     entity, project = _target({**DEFAULTS, **cfg["wandb"]})
     if os.environ.get("WANDB_MODE") != "offline":
         import wandb
-        from wandb.apis.public import RunNotFoundError
 
         try:
-            wandb.Api().run(f"{entity}/{project}/{run_id}")
+            # The `name` filter matches the run id; an empty result means not imported yet.
+            exists = len(wandb.Api().runs(f"{entity}/{project}", filters={"name": run_id})) > 0
+        except ValueError:  # project does not exist yet
+            exists = False
+        if exists:
             return f"skipped (exists as {run_id})"
-        except RunNotFoundError:
-            pass
 
     run = start_run(cfg, job_type, rel_name, extra_tags=tags, id=run_id)
     try:
