@@ -240,6 +240,18 @@ config path work like `--set`. Each sweep run's directory gets the W&B run id ap
 the simulated held-out sets, not M4: M4 is the zero-shot real-data test and should not steer
 model selection.
 
+**Backfill** runs that finished before W&B was set up (or with it off):
+
+```bash
+uv run sfm wandb-import                       # every run under outputs/ with an eval/summary.json
+uv run sfm wandb-import --only ft-500         # just one
+```
+
+Each folder becomes one run: config from `run-config.json`, the loss curve replayed from
+`train-log.csv`, metrics from `eval/summary.json`. Train runs go in group `imported` (`--group`),
+baselines in `baselines`, all tagged `imported`. Run ids come from the folder name, so a second
+import skips what is already there; runs that were logged live are skipped too.
+
 `WANDB_MODE=offline` logs locally (`wandb sync` later); `WANDB_PROJECT` / `WANDB_ENTITY` override
 the defaults in `src/sarsim_fm/tracking.py`.
 

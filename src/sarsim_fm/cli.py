@@ -242,6 +242,17 @@ def _train_and_eval(args, cfg: dict, runtime) -> None:
     )
 
 
+def cmd_wandb_import(args) -> None:
+    run_dirs = sorted(p.parent.parent for p in Path(args.root).glob("**/eval/summary.json"))
+    if not run_dirs:
+        sys.exit(f"No eval summaries under {args.root}")
+    for run_dir in run_dirs:
+        rel = str(run_dir.relative_to(args.root))
+        if args.only and rel not in args.only:
+            continue
+        print(f"{rel}: {tracking.import_run(run_dir, rel, args.group)}")
+
+
 def cmd_results(args) -> None:
     rows = []
     for path in sorted(Path(args.root).glob("**/eval/summary.json")):
@@ -305,6 +316,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--wandb", action="store_true", help="log each model as a W&B `baseline` run")
     _add_runtime_args(p)
     p.set_defaults(func=cmd_eval)
+
+    p = sub.add_parser("wandb-import", help="upload finished runs under outputs/ to W&B (backfill)")
+    p.add_argument("--root", default=str(OUTPUTS))
+    p.add_argument("--only", nargs="*", help="run folders relative to --root (default: all)")
+    p.add_argument("--group", default="imported", help="W&B group for imported train runs")
+    p.set_defaults(func=cmd_wandb_import)
 
     p = sub.add_parser("results", help="markdown table of every eval summary under outputs/")
     p.add_argument("--root", default=str(OUTPUTS))
