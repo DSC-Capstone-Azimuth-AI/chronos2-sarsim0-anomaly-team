@@ -94,6 +94,7 @@ src/sarsim_fm/
   data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
   models/         registry + one file per model family (chronos2, seasonal naive)
 tests/            fast unit tests (`uv run pytest`)
+docs/             longer guides (wandb.md)
 data/  outputs/  external/        generated locally, git-ignored
 ```
 
@@ -200,60 +201,14 @@ eval/summary.json    aggregate metrics per eval set
 
 ## Experiment tracking (Weights & Biases)
 
-Optional. Local files under `outputs/` stay the source of truth; W&B adds a shared, filterable
-table of every run across machines, plus live loss curves.
+Optional shared run table and live loss curves at
+[wandb.ai/chewycrunch-ucsd/sarsim-fm](https://wandb.ai/chewycrunch-ucsd/sarsim-fm). Setup, commands,
+sweeps and backfilling old runs: **[docs/wandb.md](docs/wandb.md)**.
 
 ```bash
-uv sync --extra cu130 --extra wandb      # or --extra cpu
-uv run wandb login                       # once per machine (API key from wandb.ai/authorize)
+uv sync --extra cu130 --extra wandb && uv run wandb login     # once per machine
+uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>
 ```
-
-Turn it on per run (or set `wandb.enabled: true` in a config):
-
-```bash
-uv run sfm train configs/train/chronos2-ft-gpu.yaml \
-  --set wandb.enabled=true --set wandb.group=lr-search
-uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --wandb   # baseline rows
-```
-
-How runs are organized, all in one project (`sarsim-fm` under `chewycrunch-ucsd`):
-
-| W&B field | Holds | Use it to |
-|---|---|---|
-| `config` | the full resolved YAML (after `inherit:` and `--set`) | filter/group by `model.type`, `data.sarsim.*`, `train.*` |
-| `group` | `wandb.group`: the question the run answers | e.g. `sarsim-season-ablation`, `lr-search` |
-| `job_type` | `train` or `baseline` | hide baselines or keep them as reference rows |
-| `tags` | `model.type`, `model.init`, device + `wandb.tags` | quick filters |
-| summary | `eval/<set>/<metric>` (sMAPE, MASE, SQL, WQL, coverage), `timing/*` | sort the runs table |
-
-The Hugging Face Trainer logs loss, learning rate and grad norm to the same run while training.
-
-**Sweeps** (cheap searches only; long runs stay as files in `configs/train/`):
-
-```bash
-uv run wandb sweep configs/sweeps/chronos2-ft-lr.yaml    # prints the sweep id
-uv run wandb agent chewycrunch-ucsd/sarsim-fm/<id>       # on each machine that should take runs
-```
-
-The agent runs `sfm train <config> key.path=value ...`; bare `key=value` arguments after the
-config path work like `--set`. Each sweep run's directory gets the W&B run id appended. Sweep on
-the simulated held-out sets, not M4: M4 is the zero-shot real-data test and should not steer
-model selection.
-
-**Backfill** runs that finished before W&B was set up (or with it off):
-
-```bash
-uv run sfm wandb-import                       # every run under outputs/ with an eval/summary.json
-uv run sfm wandb-import --only ft-500         # just one
-```
-
-Each folder becomes one run: config from `run-config.json`, the loss curve replayed from
-`train-log.csv`, metrics from `eval/summary.json`. Train runs go in group `imported` (`--group`),
-baselines in `baselines`, all tagged `imported`. Run ids come from the folder name, so a second
-import skips what is already there; runs that were logged live are skipped too.
-
-`WANDB_MODE=offline` logs locally (`wandb sync` later); `WANDB_PROJECT` / `WANDB_ENTITY` override
-the defaults in `src/sarsim_fm/tracking.py`.
 
 ## Eval sets
 
