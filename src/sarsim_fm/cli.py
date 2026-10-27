@@ -10,6 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from sarsim_fm import tracking
 from sarsim_fm.runtime import ROOT
 
 OUTPUTS = ROOT / "outputs"
@@ -67,9 +68,10 @@ def cmd_check(args) -> None:
 
 
 def cmd_stage_m4(args) -> None:
-    from sarsim_fm.data.m4 import stage_m4_monthly
+    from sarsim_fm.data.m4 import M4_ROOT, stage_m4
 
-    stage_m4_monthly(Path(args.m4_root)) if args.m4_root else stage_m4_monthly()
+    for freq in args.freq:
+        stage_m4(freq, Path(args.m4_root) if args.m4_root else M4_ROOT)
 
 
 def cmd_make_sim(args) -> None:
@@ -104,6 +106,7 @@ def _run_eval(model_spec: str, out_dir: Path, datasets: list[str], args, runtime
             out_dir, name, per_series, summary,
             {"model": model_spec, "context_length": args.context_length, "device": str(runtime.device), **meta},
         )
+        tracking.log_eval(name, summary)
         print(
             f"{name:>16}: sMAPE {100 * summary['smape']:.3f}%  MASE {summary['mase']:.4f}  "
             f"SQL {summary['sql']:.4f}  WQL {summary['wql']:.4f}  cov80 {summary['coverage_80']:.3f}  "
@@ -118,7 +121,19 @@ def cmd_eval(args) -> None:
     for spec in args.model:
         out_dir = Path(args.out) if args.out else OUTPUTS / "baselines" / _safe_name(spec)
         print(f"== {spec} → {out_dir}")
-        _run_eval(spec, out_dir, args.datasets, args, runtime, {})
+        run_cfg = {
+            "wandb": {"enabled": args.wandb, "group": "baselines"},
+            "model": {"type": spec.split(":", 1)[0], "spec": spec},
+            "data": {"context_length": args.context_length},
+            "runtime": {"device": str(runtime.device)},
+        }
+        tracking.start_run(run_cfg, "baseline", tracking.baseline_name(spec), extra_tags=["baseline"])
+        try:
+            _run_eval(spec, out_dir, args.datasets, args, runtime, {})
+        except BaseException:
+            tracking.finish(exit_code=1)
+            raise
+        tracking.finish()
 
 
 def _format_duration(seconds: float) -> str:
@@ -135,6 +150,7 @@ def _record_timing(run_dir: Path, **fields) -> None:
         fields, finished=datetime.now(UTC).isoformat(timespec="seconds")
     )
     path.write_text(json.dumps(record, indent=2))
+    tracking.log_summary(**{f"timing/{k}": v for k, v in fields.items()})
 
 
 def _train_seconds(run_dir: Path) -> float | None:
@@ -154,15 +170,34 @@ def _train_seconds(run_dir: Path) -> float | None:
 
 
 def cmd_train(args) -> None:
+    from sarsim_fm.config import load_config
+
+    cfg = load_config(args.config, [*args.set, *args.overrides])
+    runtime = _runtime_from(args, cfg)
+    cfg.setdefault("runtime", {}).update(device=str(runtime.device), bf16=runtime.bf16)
+
+    tags = [cfg["model"]["type"], cfg["model"].get("init", "pretrained"), runtime.device.type]
+    run = tracking.start_run(cfg, "train", cfg["name"], extra_tags=tags)
+    if run is not None and tracking.in_sweep():
+        # Sweep runs share one config file, so make each run directory unique.
+        cfg["name"] = run.name = f"{cfg['name']}-{run.id}"
+        run.config.update({"name": cfg["name"]}, allow_val_change=True)
+    try:
+        _train_and_eval(args, cfg, runtime)
+    except BaseException:
+        tracking.finish(exit_code=1)
+        raise
+    tracking.finish()
+
+
+def _train_and_eval(args, cfg: dict, runtime) -> None:
     import time
 
     import torch
 
-    from sarsim_fm.config import load_config
     from sarsim_fm.models import get_trainer
     from sarsim_fm.runtime import environment_info
 
-    cfg = load_config(args.config, args.set)
     run_dir = OUTPUTS / cfg["name"]
     if (run_dir / "run-config.json").exists():
         if not args.overwrite:
@@ -170,8 +205,6 @@ def cmd_train(args) -> None:
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True)
 
-    runtime = _runtime_from(args, cfg)
-    cfg.setdefault("runtime", {}).update(device=str(runtime.device), bf16=runtime.bf16)
     (run_dir / "run-config.json").write_text(
         json.dumps(
             {"config": cfg, "config_file": str(args.config), "environment": environment_info(runtime)},
@@ -210,6 +243,17 @@ def cmd_train(args) -> None:
     )
 
 
+def cmd_wandb_import(args) -> None:
+    run_dirs = sorted(p.parent.parent for p in Path(args.root).glob("**/eval/summary.json"))
+    if not run_dirs:
+        sys.exit(f"No eval summaries under {args.root}")
+    for run_dir in run_dirs:
+        rel = str(run_dir.relative_to(args.root))
+        if args.only and rel not in args.only:
+            continue
+        print(f"{rel}: {tracking.import_run(run_dir, rel, args.group)}")
+
+
 def cmd_results(args) -> None:
     rows = []
     for path in sorted(Path(args.root).glob("**/eval/summary.json")):
@@ -243,8 +287,12 @@ def main(argv: list[str] | None = None) -> None:
     _add_runtime_args(p)
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("stage-m4", help="stage M4 Monthly into data/eval/m4_monthly.parquet")
+    p = sub.add_parser("stage-m4", help="stage M4 subsets into data/eval/m4_<freq>.parquet")
     p.add_argument("--m4-root", help="checkout of Mcompetitions/M4-methods (default external/M4-data)")
+    p.add_argument(
+        "--freq", nargs="+", default=["monthly", "quarterly"], choices=["monthly", "quarterly"],
+        help="M4 subsets to stage (default: both; monthly = test, quarterly = validation)",
+    )
     p.set_defaults(func=cmd_stage_m4)
 
     p = sub.add_parser("make-sim", help="generate fixed held-out SarSim0 eval sets")
@@ -255,6 +303,9 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("train", help="train from a YAML config, then evaluate the final checkpoint")
     p.add_argument("config")
+    p.add_argument(
+        "overrides", nargs="*", metavar="KEY=VALUE", help="same as --set (lets `wandb agent` pass sweep values)"
+    )
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     p.add_argument("--overwrite", action="store_true", help="delete an existing run with the same name")
     p.add_argument("--no-eval", action="store_true")
@@ -267,8 +318,15 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", help="output dir (default outputs/baselines/<model>)")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--context-length", type=int, default=512)
+    p.add_argument("--wandb", action="store_true", help="log each model as a W&B `baseline` run")
     _add_runtime_args(p)
     p.set_defaults(func=cmd_eval)
+
+    p = sub.add_parser("wandb-import", help="upload finished runs under outputs/ to W&B (backfill)")
+    p.add_argument("--root", default=str(OUTPUTS))
+    p.add_argument("--only", nargs="*", help="run folders relative to --root (default: all)")
+    p.add_argument("--group", default="imported", help="W&B group for imported train runs")
+    p.set_defaults(func=cmd_wandb_import)
 
     p = sub.add_parser("results", help="markdown table of every eval summary under outputs/")
     p.add_argument("--root", default=str(OUTPUTS))

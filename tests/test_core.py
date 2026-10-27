@@ -54,3 +54,13 @@ def test_config_inherit_and_overrides(tmp_path):
 def test_cpu_runtime_is_fp32():
     runtime = resolve_runtime("cpu", "auto")
     assert runtime.device.type == "cpu" and not runtime.bf16 and not runtime.tf32
+
+
+def test_tracking_is_noop_when_disabled(monkeypatch):
+    from sarsim_fm import tracking
+
+    monkeypatch.delenv("WANDB_SWEEP_ID", raising=False)
+    assert tracking.start_run({"wandb": {"enabled": False}}, "train", "x") is None
+    assert tracking.start_run({}, "train", "x") is None
+    tracking.log_eval("sim_iid", {"wql": 0.1})  # no run open: must not raise
+    tracking.finish()

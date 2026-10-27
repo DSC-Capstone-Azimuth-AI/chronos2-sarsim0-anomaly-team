@@ -1,0 +1,34 @@
+# Learning-rate grid for the 500-step fine-tune (the best M4 model so far), 4 runs, ~45 min on a 3070 Ti.
+#   wandb sweep configs/sweeps/chronos2-ft-500-lr.yaml    # prints a sweep id
+#   wandb agent chewycrunch-ucsd/sarsim-fm/<sweep id>
+#
+# Scored on M4 Quarterly, the real-data *validation* set. M4 Monthly is the zero-shot test, so it is
+# left out of eval here and the winner is checked on it afterwards with a normal `sfm train` run.
+# Sim sets are still evaluated for reference, but not used to pick: better sim scores did not mean
+# better real-data scores (docs/results.md).
+program: src/sarsim_fm/cli.py
+project: sarsim-fm
+entity: chewycrunch-ucsd
+name: chronos2-ft-500-lr
+method: grid
+metric:
+  name: eval/m4_quarterly/sql
+  goal: minimize
+parameters:
+  train.learning_rate:
+    values: [1.0e-6, 3.0e-6, 1.0e-5, 3.0e-5]
+command:
+  - uv
+  - run
+  - sfm
+  - train
+  - configs/train/chronos2-ft-5k.yaml
+  - ${args_no_hyphens}       # must come right after the config path
+  - --set
+  - name=chronos2-ft-500-sweep-lr
+  - --set
+  - train.max_steps=500
+  - --set
+  - train.warmup_steps=50
+  - --set
+  - eval.datasets=[sim_iid,sim_ood_season,m4_quarterly]

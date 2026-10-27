@@ -1,4 +1,5 @@
 # Shared defaults for Chronos-2 runs. Other configs `inherit:` this and override fields.
+# Run names follow docs/naming.md: <model>-<init>-<steps>[-<what's different>].
 
 model:
   type: chronos2
@@ -29,5 +30,13 @@ runtime:
   precision: auto           # auto (bf16 on supporting GPUs) | bf16 | fp32
 
 eval:
-  datasets: [sim_iid, sim_ood_season, m4_monthly]   # missing sets are skipped
+  # m4_quarterly = real-data validation (model selection); m4_monthly = zero-shot test. Missing sets are skipped.
+  datasets: [sim_iid, sim_ood_season, m4_quarterly, m4_monthly]
   batch_size: 64
+
+wandb:
+  enabled: false            # true logs to W&B (needs `uv sync --extra wandb` + `wandb login`)
+  group: null               # experiment question this run answers, e.g. sarsim-season-ablation
+  tags: []                  # model.type, model.init and device are added automatically
+  # project / entity default to sarsim-fm / chewycrunch-ucsd (src/sarsim_fm/tracking.py);
+  # WANDB_PROJECT / WANDB_ENTITY env vars override them

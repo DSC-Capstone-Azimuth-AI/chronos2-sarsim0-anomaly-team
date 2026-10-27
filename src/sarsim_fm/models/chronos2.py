@@ -12,6 +12,7 @@ from chronos import Chronos2Pipeline
 from chronos.chronos2.trainer import Chronos2Trainer
 from transformers import AutoConfig, TrainingArguments
 
+from sarsim_fm import tracking
 from sarsim_fm.data.sim import training_stream
 from sarsim_fm.runtime import Runtime
 
@@ -72,7 +73,7 @@ def train(cfg: dict, runtime: Runtime, run_dir: Path) -> Path:
         optim="adamw_torch",
         logging_strategy="steps",
         logging_steps=train_cfg.get("logging_steps", 10),
-        report_to="none",
+        report_to="wandb" if tracking.active() else "none",
         save_strategy="steps" if save_steps < max_steps else "no",
         save_steps=save_steps,
         save_total_limit=1,
