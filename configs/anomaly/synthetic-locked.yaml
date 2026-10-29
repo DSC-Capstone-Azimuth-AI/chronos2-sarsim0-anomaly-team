@@ -1,0 +1,4 @@
+name: synthetic-locked
+datasets: [data/anomaly/sim-anomaly-test.parquet, data/anomaly/sim-normal-test.parquet]
+locked: true
+selection_file: outputs/anomaly/synthetic-selection.json

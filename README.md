@@ -5,6 +5,13 @@ Train time-series forecasting models on [SarSim0](https://github.com/kashif/sars
 held-out simulated data and M4 Monthly. The saved quantile forecasts are the starting point for
 forecast-residual anomaly detection.
 
+The anomaly detector uses these forecasts to flag unusual readings, groups them into events,
+and compares them with labelled anomalies in simulated data and UCR. Setup, commands and how
+the scores work: [Anomaly detection](docs/anomaly-detection.md).
+
+For remote GPU evaluation, `uv run sfm prepare-anomaly-handoff` packages the code, data and
+chosen detector settings. Training runs remotely, and only if the results show it is needed.
+
 Everything runs through one CLI, `sfm`, driven by YAML configs. The same config runs on a laptop
 CPU, a consumer GPU, or DSMLP; only `--device` changes. Terms in *italics* are defined in the
 [Glossary](docs/glossary.md).

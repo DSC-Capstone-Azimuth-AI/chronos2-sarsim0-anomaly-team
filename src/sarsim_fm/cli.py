@@ -84,6 +84,83 @@ def cmd_make_sim(args) -> None:
             make_heldout_split(name, split, cfg.get("defaults", {}))
 
 
+def cmd_make_anomaly_sim(args) -> None:
+    from sarsim_fm.config import load_config
+    from sarsim_fm.data.sim import make_anomaly_split
+
+    cfg = load_config(args.config, args.set)
+    defaults = cfg.get("defaults", {})
+    ranges = []
+    for name, split in cfg["splits"].items():
+        spec = {**defaults, **split, "sarsim": {**defaults.get("sarsim", {}), **split.get("sarsim", {})}}
+        seeds = set(range(spec["seed"], spec["seed"] + spec["n_series"]))
+        if any(seeds & previous for previous in ranges):
+            raise ValueError("anomaly split seed ranges overlap")
+        ranges.append(seeds)
+        make_anomaly_split(name, spec, Path(args.out))
+
+
+def cmd_detect(args) -> None:
+    from sarsim_fm.anomaly.pipeline import run_detection
+    from sarsim_fm.config import load_config
+
+    cfg = load_config(args.config, args.set)
+    run_detection(cfg, args.model, Path(args.out) if args.out else None,
+                  args.device, args.overwrite, config_file=str(args.config))
+
+
+def cmd_anomaly_results(args) -> None:
+    from sarsim_fm.anomaly.pipeline import collect_results
+
+    print(json.dumps(collect_results(Path(args.root)), indent=2))
+
+
+def cmd_select_anomaly(args) -> None:
+    from sarsim_fm.anomaly.selection import select_settings
+
+    select_settings(Path(args.run), Path(args.out))
+
+
+def cmd_stage_ucr(args) -> None:
+    from sarsim_fm.data.ucr_anomaly import stage_ucr
+
+    stage_ucr(Path(args.source), Path(args.out))
+
+
+def cmd_anomaly_pilot(args) -> None:
+    from sarsim_fm.anomaly.experiment import compare_pilot
+    from sarsim_fm.config import load_config
+
+    compare_pilot(load_config(args.config), args.model, Path(args.out), args.device)
+
+
+def cmd_anomaly_experiment(args) -> None:
+    from sarsim_fm.anomaly.experiment import run_experiment
+
+    run_experiment(args.device, include_ucr=not args.synthetic_only,
+                   external_only=args.external_only, checkpoint=args.checkpoint,
+                   pretrained_checkpoint=args.pretrained_checkpoint)
+
+
+def cmd_anomaly_diagnostics(args) -> None:
+    from sarsim_fm.anomaly.diagnostics import write_diagnostics
+
+    print(json.dumps(write_diagnostics(Path(args.run), args.max_plots), indent=2))
+
+
+def cmd_prepare_anomaly_handoff(args) -> None:
+    from sarsim_fm.anomaly.handoff import prepare_handoff
+
+    print(json.dumps(prepare_handoff(Path(args.out), include_ucr=not args.without_ucr,
+                                    overwrite=args.overwrite), indent=2))
+
+
+def cmd_verify_anomaly_handoff(args) -> None:
+    from sarsim_fm.anomaly.handoff import verify_handoff
+
+    print(json.dumps(verify_handoff(Path(args.root)), indent=2))
+
+
 def _safe_name(spec: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", spec).strip("_")
 
@@ -300,6 +377,65 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--only", nargs="*", help="split names to build (default: all)")
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     p.set_defaults(func=cmd_make_sim)
+
+    p = sub.add_parser("make-anomaly-sim", help="generate fixed synthetic anomaly and normal splits")
+    p.add_argument("config")
+    p.add_argument("--out", default=str(ROOT / "data" / "anomaly"))
+    p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
+    p.set_defaults(func=cmd_make_anomaly_sim)
+
+    p = sub.add_parser("detect", help="sequential forecasts, clean calibration, events, and metrics")
+    p.add_argument("config")
+    p.add_argument("--model", required=True)
+    p.add_argument("--out")
+    p.add_argument("--device")
+    p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
+    p.set_defaults(func=cmd_detect)
+
+    p = sub.add_parser("anomaly-results", help="compare saved anomaly summaries and paired UCR outcomes")
+    p.add_argument("--root", default=str(OUTPUTS / "anomaly"))
+    p.set_defaults(func=cmd_anomaly_results)
+
+    p = sub.add_parser("select-anomaly", help="freeze score/FPR/event settings from a completed dev run")
+    p.add_argument("run")
+    p.add_argument("--out", default=str(OUTPUTS / "anomaly" / "synthetic-selection.json"))
+    p.set_defaults(func=cmd_select_anomaly)
+
+    p = sub.add_parser("stage-ucr-anomaly", help="validate all 250 archive files and stage a manifest")
+    p.add_argument("--source", required=True)
+    p.add_argument("--out", default=str(ROOT / "data" / "anomaly" / "ucr.manifest.json"))
+    p.set_defaults(func=cmd_stage_ucr)
+
+    p = sub.add_parser("anomaly-pilot", help="compare rolling and block forecasts on a fixed dev pilot")
+    p.add_argument("config")
+    p.add_argument("--model", required=True)
+    p.add_argument("--out", default=str(OUTPUTS / "anomaly-pilot"))
+    p.add_argument("--device")
+    p.set_defaults(func=cmd_anomaly_pilot)
+
+    p = sub.add_parser("anomaly-experiment", help="resume ordered dev selection, locked tests, UCR, comparison")
+    p.add_argument("--device")
+    p.add_argument("--synthetic-only", action="store_true", help="stop after locked synthetic evaluation")
+    p.add_argument("--external-only", action="store_true", help="use transferred frozen settings; run UCR only")
+    p.add_argument("--checkpoint", help="optional existing fine-tuned checkpoint directory")
+    p.add_argument("--pretrained-checkpoint", help="local directory of revision-pinned pretrained weights")
+    p.set_defaults(func=cmd_anomaly_experiment)
+
+    p = sub.add_parser("anomaly-diagnostics", help="post-lock failure plots and family metrics")
+    p.add_argument("run")
+    p.add_argument("--max-plots", type=int, default=20)
+    p.set_defaults(func=cmd_anomaly_diagnostics)
+
+    p = sub.add_parser("prepare-anomaly-handoff", help="verify and package code/data/frozen settings for a remote GPU")
+    p.add_argument("--out", default=str(OUTPUTS / "anomaly-handoff"))
+    p.add_argument("--without-ucr", action="store_true", help="transfer UCR separately and set SARSIM_UCR_SOURCE remotely")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(func=cmd_prepare_anomaly_handoff)
+
+    p = sub.add_parser("verify-anomaly-handoff", help="verify all packaged file hashes after transfer")
+    p.add_argument("--root", default=str(ROOT))
+    p.set_defaults(func=cmd_verify_anomaly_handoff)
 
     p = sub.add_parser("train", help="train from a YAML config, then evaluate the final checkpoint")
     p.add_argument("config")

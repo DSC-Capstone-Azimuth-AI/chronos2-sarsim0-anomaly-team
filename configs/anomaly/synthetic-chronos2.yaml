@@ -1,0 +1,10 @@
+name: synthetic-dev
+datasets: [data/anomaly/sim-anomaly-dev.parquet]
+detector:
+  mode: rolling
+  context_length: 256
+  prediction_length: 18
+  batch_size: 128
+  score: robust_residual
+  target_fpr: 0.02
+  events: {min_run: 1, merge_gap: 0, release_threshold_ratio: 1.0}

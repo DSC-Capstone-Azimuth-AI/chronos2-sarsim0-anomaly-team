@@ -1,0 +1,13 @@
+# Separate per-series seeds; retries consume the same series RNG, not other seed ranges.
+defaults:
+  n_series: 30
+  series_length: 2048
+  clean_prefix_length: 1024
+  context_length: 256
+  season_length: 24
+  duration_periods: [0.25, 2.0]
+  severity_range: [3.0, 8.0]
+  max_retries: 30
+  sarsim: {series_length: 4096}
+splits:
+  sim-anomaly-dev: {seed: 3100000}

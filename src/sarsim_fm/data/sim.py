@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import fields
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sarsim0 import SarSim0Generator, SarSim0StreamingDataset, SarSimConfig
 
@@ -73,3 +76,68 @@ def make_heldout_split(name: str, split: dict, defaults: dict) -> None:
     path = write_eval_set(frame, name)
     (EVAL_DIR / f"{name}.manifest.json").write_text(json.dumps({"name": name, **spec}, indent=2))
     print(f"Wrote {path} ({len(frame)} series, seed {spec['seed']})")
+
+
+def draw_clean_series(generator, length, context_length, max_retries, rejections):
+    """Reject invalid raw outputs before concatenation/injection, with bounded retries."""
+    from sarsim_fm.data.anomaly_injection import clean_rejection_reason
+
+    for _ in range(max_retries):
+        context, target = generator.generate_batch(batch_size=1)
+        x = np.concatenate([np.asarray(context[0]).ravel(), np.asarray(target[0]).ravel()])
+        reason = clean_rejection_reason(x, context_length)
+        if len(x) < length:
+            reason = "too_short"
+        if reason is None:
+            return x[:length].astype(np.float64)
+        rejections[reason] += 1
+    raise ValueError(f"clean generation exhausted {max_retries} retries: {dict(rejections)}")
+
+
+def make_anomaly_split(name: str, spec: dict, out: Path) -> Path:
+    """Each series has its own SarSim0 seed; normal splits have empty labels."""
+    import hashlib
+
+    from sarsim_fm.data.anomaly_injection import KINDS, inject_anomaly
+
+    length, prefix = int(spec["series_length"]), int(spec["clean_prefix_length"])
+    context = int(spec["context_length"])
+    if not 1 <= context < prefix < length:
+        raise ValueError("require 1 <= context_length < clean_prefix_length < series_length")
+    if spec["n_series"] < 1 or spec.get("max_retries", 30) < 1:
+        raise ValueError("n_series and max_retries must be positive")
+    rows, rejections = [], Counter({"non_finite": 0, "clipped": 0, "all_zero_context": 0, "too_short": 0})
+    for i in range(spec["n_series"]):
+        seed = int(spec["seed"]) + i
+        rng = np.random.default_rng(seed)
+        config = sarsim_config(prefix, length - prefix, spec.get("sarsim"))
+        generator = SarSim0Generator(config=config, seed=seed)
+        clean = draw_clean_series(generator, length, context, spec.get("max_retries", 30), rejections)
+        if spec.get("normal", False):
+            series, start, end, kind, severity = clean.copy(), None, None, "normal", 0.0
+        else:
+            period = int(spec["season_length"])
+            duration = max(1, round(rng.uniform(*spec["duration_periods"]) * period))
+            duration = min(duration, length - prefix)
+            start = int(rng.integers(prefix, length - duration + 1))
+            kind = KINDS[i % len(KINDS)]
+            severity = float(rng.uniform(*spec["severity_range"]))
+            series, label = inject_anomaly(clean, rng, kind, severity, duration, start, period)
+            end = label.end
+        rows.append({
+            "item_id": f"{name}-{i:06d}", "series": series.tolist(), "clean_series": clean.tolist(),
+            "anomaly_start": start, "anomaly_end": end, "anomaly_kind": kind,
+            "severity": severity, "seed": seed, "season_length": spec["season_length"],
+            "clean_prefix_length": prefix,
+        })
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{name}.parquet"
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    manifest = {
+        "name": name, "config": spec, "seed_range": [spec["seed"], spec["seed"] + len(rows)],
+        "n_series": len(rows), "rejections": dict(sorted(rejections.items())),
+        "index_convention": "zero-based half-open", "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+    path.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2))
+    print(f"Wrote {path} ({len(rows)} series; rejected {sum(rejections.values())})")
+    return path
