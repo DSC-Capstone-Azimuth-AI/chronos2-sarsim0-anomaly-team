@@ -1,0 +1,3 @@
+inherit: synthetic-chronos2.yaml
+name: synthetic-pilot
+subset_items: [sim-anomaly-dev-000000, sim-anomaly-dev-000001, sim-anomaly-dev-000002]

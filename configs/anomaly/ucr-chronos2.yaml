@@ -1,0 +1,14 @@
+name: ucr-locked
+datasets: [data/anomaly/ucr.manifest.json]
+locked: true
+# Written by select-anomaly on synthetic development only; required before UCR runs.
+selection_file: outputs/anomaly/synthetic-selection.json
+# Frozen from the synthetic-development search before external detector evaluation.
+detector:
+  mode: rolling
+  context_length: 256
+  prediction_length: 18
+  batch_size: 128
+  score: interval_exceedance
+  target_fpr: 0.02
+  events: {min_run: 2, merge_gap: 6, release_threshold_ratio: 1.0}
