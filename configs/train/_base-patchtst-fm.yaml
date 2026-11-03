@@ -1,0 +1,42 @@
+# Shared defaults for PatchTST-FM r2 runs. Other configs `inherit:` this and override fields.
+# Data, train, eval and runtime match _base-chronos2.yaml: this is the PatchTST-family counterpart
+# of amazon/chronos-2 (pretrained foundation model), not the small paper PatchTST (_base-patchtst.yaml).
+# Run names follow docs/naming.md: <model>-<init>-<steps>[-<what's different>].
+
+model:
+  type: patchtst_fm
+  base: ibm-granite/granite-timeseries-patchtst-fm-r2
+  init: pretrained          # pretrained = fine-tune; scratch = same architecture, random weights
+  architecture: {}          # PatchTSTFMConfig overrides, scratch only (e.g. {n_layer: 12, d_model: 512})
+
+data:
+  context_length: 512
+  prediction_length: 18
+  batch_size: 8             # series per micro-batch (SarSim0 builds the batch itself)
+  seed: 42
+  num_workers: 0
+  sarsim: {}
+
+train:
+  max_steps: 1000
+  learning_rate: 1.0e-5
+  lr_scheduler: linear
+  warmup_steps: 0
+  grad_accum: 1
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_steps: 500
+
+runtime:
+  device: auto
+  precision: auto
+
+eval:
+  datasets: [sim_iid, sim_ood_season, m4_quarterly, m4_monthly]
+  batch_size: 64
+
+wandb:
+  enabled: false
+  group: null
+  tags: []

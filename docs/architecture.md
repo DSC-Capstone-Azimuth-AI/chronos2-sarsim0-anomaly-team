@@ -29,6 +29,10 @@ configs/
   train/_base-patchtst.yaml      PatchTST defaults (same data/eval as Chronos-2)
   train/patchtst-scratch-smoke.yaml  100-step PatchTST plumbing check
   train/patchtst-scratch-20k.yaml    PatchTST matched to chronos2-scratch-20k
+  train/_base-patchtst-fm.yaml   PatchTST-FM r2 defaults (IBM's pretrained PatchTST, same data/eval)
+  train/patchtst-fm-ft-smoke.yaml    100-step PatchTST-FM plumbing check
+  train/patchtst-fm-ft-5k.yaml       fine-tune matched to chronos2-ft-5k
+  train/patchtst-fm-scratch-20k.yaml r2 architecture, random init, matched to chronos2-scratch-20k
   sweeps/chronos2-ft-500-lr.yaml learning-rate grid for the 500-step fine-tune
 src/sarsim_fm/
   cli.py          `sfm` commands
@@ -39,9 +43,10 @@ src/sarsim_fm/
   evaluate.py     score any model on any eval set, save per-series quantiles
   data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
   models/         registry, shared HF Trainer setup, one file per model family
-                  (chronos2, patchtst, seasonal naive)
+                  (chronos2, patchtst, patchtst_fm, seasonal naive); vendor/ holds
+                  third-party model code (PatchTST-FM, see its README)
 tests/            fast unit tests (`uv run pytest`)
-docs/             guides: architecture, evaluation, results, patchtst, naming, glossary, wandb
+docs/             guides: architecture, evaluation, results, patchtst, patchtst-fm, naming, glossary, wandb
 data/  outputs/  external/        generated locally, git-ignored
 ```
 
@@ -63,6 +68,7 @@ and a `run-config.json` behind it.
 | `models/hf.py` | Hugging Face `TrainingArguments` built from a config (shared, so every model trains under identical settings), a Trainer for pre-batched streams, and the raw-step timer behind `sfm check`. | `training_arguments`, `StreamTrainer`, `timed_steps` |
 | `models/chronos2.py` | Chronos-2 specifics: load a checkpoint for forecasting, build a model (pretrained or random weights), train it with the Hugging Face Trainer, and time raw training steps for `sfm check`. | `load`, `build_model`, `train`, `timed_steps` |
 | `models/patchtst.py` | PatchTST specifics: adapt the SarSim0 stream to fixed-length masked inputs, build and train the model, and turn its Student-t head into quantiles. See [patchtst.md](patchtst.md). | `load`, `build_model`, `train`, `PatchTSTStream`, `student_t_quantiles` |
+| `models/patchtst_fm.py` | PatchTST-FM r2 specifics: load IBM's pretrained model (or its architecture with random weights), lay out SarSim0 windows the way IBM's inference does, and train with IBM's quantile loss. See [patchtst-fm.md](patchtst-fm.md). | `load`, `build_model`, `train`, `forecast_window`, `forecast_loss` |
 | `models/naive.py` | Seasonal naive baseline. | `SeasonalNaive` |
 | `evaluate.py` | Runs any forecaster on any eval set, scores each series, and saves quantiles plus a summary. | `evaluate`, `save_eval` |
 | `metrics.py` | The metric formulas. | `smape`, `mase`, `naive_scale`, `scaled_quantile_loss`, `quantile_loss`, `coverage` |

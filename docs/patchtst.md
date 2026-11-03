@@ -3,6 +3,8 @@
 PatchTST ([Nie et al., ICLR 2023](https://arxiv.org/abs/2211.14730);
 [Hugging Face blog](https://huggingface.co/blog/patchtst)) is the second model family here,
 added so it can be compared with Chronos-2 on the same data, metrics and anomaly pipeline.
+For IBM's *pretrained* PatchTST foundation model (the counterpart of `amazon/chronos-2`), see
+[patchtst-fm.md](patchtst-fm.md).
 Code: [`src/sarsim_fm/models/patchtst.py`](../src/sarsim_fm/models/patchtst.py).
 
 ## How it differs from Chronos-2

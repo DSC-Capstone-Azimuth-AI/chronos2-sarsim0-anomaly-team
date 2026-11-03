@@ -11,7 +11,7 @@ W&B run name. Pick it so the dashboard alone tells runs apart.
 
 | Part | Values | Notes |
 |---|---|---|
-| `model` | `chronos2`, `patchtst`, later `chronos1`, `stfm`, ... | `model.type` |
+| `model` | `chronos2`, `patchtst`, `patchtst-fm`, later `chronos1`, `stfm`, ... | `model.type` (`patchtst_fm` → `patchtst-fm`) |
 | `init` | `ft` (from pretrained weights), `scratch` (random init) | `model.init` |
 | `steps` | `500`, `1k`, `5k`, `20k` | Optimizer steps (`train.max_steps`) |
 | suffix | Only what differs from the config the run came from | See tokens below; join several with `-` |

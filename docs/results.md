@@ -10,6 +10,7 @@ old names listed there.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Seasonal naive | — | — | 1.1901 | 1.1901 | 1.1375 | 1.1375 | 15.99 | 1.2597 | 0.014 |
 | `amazon/chronos-2` (pretrained, zero-shot) | — | — | 0.6343 | 0.5255 | 0.6234 | 0.5102 | 13.11 | 0.9221 | 0.973 |
+| `patchtst_fm` (IBM PatchTST-FM r2, pretrained, zero-shot; Apple MPS, bf16) | — | — | 0.6186 | 0.5126 | 0.6397 | 0.5267 | 13.88 | 0.9756 | 0.956 |
 | `chronos2-ft-1k-b8` (fine-tune, 1k steps × batch 8, lr 1e-5, CPU) | 8k | 24.7 min (CPU) | 0.6289 | 0.5216 | 0.6158 | 0.5045 | 13.08 | 0.9174 | 0.960 |
 | `chronos2-ft-500` (fine-tune, `chronos2-ft-5k` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | 0.6248 | 0.5176 | 0.6105 | 0.4987 | **12.75** | **0.9038** | 0.973 |
 | `chronos2-ft-5k` (fine-tune, full config: 5k steps × 256, lr 1e-5) | 1.28M | 1.83 h (3070 Ti) | **0.6176** | **0.5114** | **0.6054** | **0.4937** | 12.89 | 0.9242 | 0.965 |
@@ -45,6 +46,24 @@ Commands:
   Training loss was still falling at the end (4.10 → 3.11 averaged over 2,000-step windows,
   vs. ~2.80 for the fine-tunes), so this run is undertrained rather than a negative result: it
   saw 5.12M series, while the paper trains 250k–500k steps at batch 1,024–4,096 (App. E).
+- **Zero-shot PatchTST-FM r2 ([patchtst-fm.md](patchtst-fm.md)) is a competitive pretrained model but
+  trails Chronos-2 on real data.** It beats zero-shot Chronos-2 on sim_iid (MASE 0.619 vs. 0.634,
+  level with `chronos2-ft-5k`) but is worse on unseen seasonal periods (sim_ood_season 0.640 vs.
+  0.623) and on M4 Monthly (MASE 0.976 vs. 0.922, +5.8%; sMAPE 13.88 vs. 13.11). Its intervals are
+  slightly narrow on M4 (98% coverage 0.956). It is ~10× slower to evaluate than Chronos-2. Run on
+  Apple MPS, where IBM's code uses bf16; on 64 M4 Quarterly series this moved the aggregate
+  quantile loss by 0.1% vs. CPU. Not yet checked: whether its pretraining data includes M4.
+  Fine-tuning (`patchtst-fm-ft-5k`) needs a GPU with more than 8 GB.
+- M4 Quarterly (validation set), zero-shot, context 512, Apple MPS:
+
+  | Model | sMAPE % | MASE | SQL | Cov 80 | Cov 98 |
+  |---|---:|---:|---:|---:|---:|
+  | Seasonal naive | 12.52 | 1.6022 | 1.6022 | 0.004 | 0.004 |
+  | `amazon/chronos-2` | **10.43** | **1.2008** | **0.9581** | 0.756 | 0.981 |
+  | `patchtst_fm` (r2) | 10.61 | 1.2223 | 0.9799 | 0.729 | 0.950 |
+
+  Commands: `sfm eval --model patchtst_fm --device mps` and
+  `sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --device mps --datasets m4_quarterly`.
 - Caveats: one training seed per run (the CIs cover eval-set sampling, not run-to-run noise).
   `chronos2-ft-500` used the 200-step warmup sized for 5,000 steps, so 40% of its run was warmup. Only
   the last checkpoint was kept (`save_total_limit: 1`), so we cannot see where between step 500
