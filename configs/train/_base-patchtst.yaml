@@ -1,0 +1,45 @@
+# Shared defaults for PatchTST runs. Other configs `inherit:` this and override fields.
+# Data, eval and runtime match _base-chronos2.yaml so the two models are scored the same way.
+# Run names follow docs/naming.md: <model>-<init>-<steps>[-<what's different>].
+
+model:
+  type: patchtst
+  init: scratch             # no general pretrained PatchTST exists; pretrained = continue from `base`
+  base: null                # a PatchTST checkpoint dir, only read when init: pretrained
+  architecture: {}          # PatchTSTConfig overrides over ARCHITECTURE in models/patchtst.py
+                            # (PatchTST/64: patch 16, stride 8, d_model 128, 3 layers, 16 heads)
+
+data:
+  context_length: 512       # fixed model input; shorter histories are masked
+  prediction_length: 18     # fixed model output; eval horizons must be <= this
+  batch_size: 8
+  seed: 42
+  num_workers: 0
+  sarsim: {}
+  short_context:            # mask a random-length prefix so short real series (M4) are in-distribution
+    prob: 0.5               # share of training contexts truncated
+    min_length: 16          # shortest history kept (M4 Quarterly's shortest series)
+
+train:
+  max_steps: 1000
+  learning_rate: 1.0e-4     # paper App. E (Adam, 1e-4), same as chronos2-scratch-20k
+  lr_scheduler: cosine
+  warmup_steps: 0
+  grad_accum: 1
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_steps: 500
+
+runtime:
+  device: auto
+  precision: auto
+
+eval:
+  datasets: [sim_iid, sim_ood_season, m4_quarterly, m4_monthly]
+  batch_size: 64
+
+wandb:
+  enabled: false
+  group: null
+  tags: []

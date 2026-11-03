@@ -65,7 +65,7 @@ def validate_completed_run(path, config, model):
 
     if sorted(map(identity, previous)) != sorted(map(identity, current)):
         raise ValueError(f"{path}: source changed since completed run")
-    if model.startswith("chronos2:") and Path(model.partition(":")[2]).is_dir():
+    if ":" in model and Path(model.partition(":")[2]).is_dir():
         from sarsim_fm.anomaly.provenance import checkpoint_identity
 
         if checkpoint_identity(model)["sha256"] != saved["checkpoint"]["sha256"]:

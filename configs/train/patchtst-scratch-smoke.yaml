@@ -1,0 +1,11 @@
+# 100-step plumbing check for PatchTST: stream → model → checkpoint → eval. Not expected to forecast well.
+inherit: _base-patchtst.yaml
+name: patchtst-scratch-smoke
+
+data:
+  batch_size: 8
+
+train:
+  max_steps: 100
+  logging_steps: 10
+  save_steps: 100

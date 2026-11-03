@@ -1,0 +1,20 @@
+# Head-to-head with chronos2-scratch-20k.yaml: same SarSim0 stream, seed, effective batch (256),
+# steps, learning rate and schedule. Only the model differs (PatchTST ~0.4M params vs
+# Chronos-2 ~120M) and its loss (Student-t NLL vs Chronos-2's quantile loss).
+inherit: _base-patchtst.yaml
+name: patchtst-scratch-20k
+
+data:
+  batch_size: 64
+  num_workers: 2
+
+train:
+  max_steps: 20000
+  learning_rate: 1.0e-4
+  lr_scheduler: cosine
+  warmup_steps: 1000
+  grad_accum: 4
+  save_steps: 2000
+
+runtime:
+  device: auto              # ~0.5 s/step on a laptop CPU (≈3 h); far faster on a GPU

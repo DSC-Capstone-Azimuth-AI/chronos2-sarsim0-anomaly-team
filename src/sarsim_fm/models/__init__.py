@@ -4,10 +4,11 @@ A forecaster spec is `<type>` or `<type>:<path-or-hub-id>`, e.g.
     seasonal_naive
     chronos2:amazon/chronos-2
     chronos2:outputs/chronos2-ft-cpu/checkpoint-final
+    patchtst:outputs/patchtst-scratch-20k/checkpoint-final
 
 To add a model family, write `models/<name>.py` with `load(path, runtime, context_length)`
 returning a `Forecaster`, plus `train(cfg, runtime, run_dir) -> checkpoint path` if trainable,
-then register both below.
+then register both below (and `timed_steps(cfg, runtime, steps)` for `sfm check`).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from typing import Protocol
 
 import numpy as np
 
-from sarsim_fm.models import chronos2, naive
+from sarsim_fm.models import chronos2, naive, patchtst
 from sarsim_fm.runtime import Runtime
 
 
@@ -36,11 +37,18 @@ class Forecaster(Protocol):
 
 LOADERS: dict[str, Callable[..., Forecaster]] = {
     "chronos2": chronos2.load,
+    "patchtst": patchtst.load,
     "seasonal_naive": naive.load,
 }
 
 TRAINERS: dict[str, Callable] = {
     "chronos2": chronos2.train,
+    "patchtst": patchtst.train,
+}
+
+TIMERS: dict[str, Callable] = {
+    "chronos2": chronos2.timed_steps,
+    "patchtst": patchtst.timed_steps,
 }
 
 
@@ -55,3 +63,9 @@ def get_trainer(kind: str) -> Callable:
     if kind not in TRAINERS:
         raise ValueError(f"Model type {kind!r} is not trainable; trainable: {sorted(TRAINERS)}")
     return TRAINERS[kind]
+
+
+def get_timer(kind: str) -> Callable:
+    if kind not in TIMERS:
+        raise ValueError(f"`sfm check` timing does not support {kind!r}; supported: {sorted(TIMERS)}")
+    return TIMERS[kind]
