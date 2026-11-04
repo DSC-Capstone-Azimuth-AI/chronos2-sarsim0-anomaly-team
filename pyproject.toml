@@ -58,6 +58,7 @@ explicit = true
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["src/sarsim_fm/models/vendor"]  # third-party code, kept as upstream wrote it
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

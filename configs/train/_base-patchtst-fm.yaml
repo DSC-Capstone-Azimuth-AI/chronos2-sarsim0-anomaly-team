@@ -1,6 +1,6 @@
 # Shared defaults for PatchTST-FM r2 runs. Other configs `inherit:` this and override fields.
 # Data, train, eval and runtime match _base-chronos2.yaml: this is the PatchTST-family counterpart
-# of amazon/chronos-2 (pretrained foundation model), not the small paper PatchTST (_base-patchtst.yaml).
+# of amazon/chronos-2 (pretrained foundation model).
 # Run names follow docs/naming.md: <model>-<init>-<steps>[-<what's different>].
 
 model:

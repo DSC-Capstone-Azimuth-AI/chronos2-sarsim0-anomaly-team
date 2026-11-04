@@ -4,7 +4,6 @@ A forecaster spec is `<type>` or `<type>:<path-or-hub-id>`, e.g.
     seasonal_naive
     chronos2:amazon/chronos-2
     chronos2:outputs/chronos2-ft-cpu/checkpoint-final
-    patchtst:outputs/patchtst-scratch-20k/checkpoint-final
     patchtst_fm                                   (= patchtst_fm:ibm-granite/granite-timeseries-patchtst-fm-r2)
     patchtst_fm:outputs/patchtst-fm-ft-5k/checkpoint-final
 
@@ -20,7 +19,7 @@ from typing import Protocol
 
 import numpy as np
 
-from sarsim_fm.models import chronos2, naive, patchtst, patchtst_fm
+from sarsim_fm.models import chronos2, naive, patchtst_fm
 from sarsim_fm.runtime import Runtime
 
 
@@ -39,20 +38,17 @@ class Forecaster(Protocol):
 
 LOADERS: dict[str, Callable[..., Forecaster]] = {
     "chronos2": chronos2.load,
-    "patchtst": patchtst.load,
     "patchtst_fm": patchtst_fm.load,
     "seasonal_naive": naive.load,
 }
 
 TRAINERS: dict[str, Callable] = {
     "chronos2": chronos2.train,
-    "patchtst": patchtst.train,
     "patchtst_fm": patchtst_fm.train,
 }
 
 TIMERS: dict[str, Callable] = {
     "chronos2": chronos2.timed_steps,
-    "patchtst": patchtst.timed_steps,
     "patchtst_fm": patchtst_fm.timed_steps,
 }
 

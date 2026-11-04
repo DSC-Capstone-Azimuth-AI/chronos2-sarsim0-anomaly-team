@@ -12,7 +12,6 @@ Kubernetes Jobs in namespace `ucsd-ubellur-ugcapstone-d05` for runs that need mo
 
 | File | Config | GPU |
 |---|---|---|
-| `k8s/patchtst-scratch-20k-job.yaml` | `configs/train/patchtst-scratch-20k.yaml` (paper PatchTST, 0.4M) | any current card |
 | `k8s/patchtst-fm-ft-5k-job.yaml` | `configs/train/patchtst-fm-ft-5k.yaml` | 80 GB |
 | `k8s/patchtst-fm-scratch-20k-job.yaml` | `configs/train/patchtst-fm-scratch-20k.yaml` | 80 GB |
 
@@ -20,10 +19,10 @@ Kubernetes Jobs in namespace `ucsd-ubellur-ugcapstone-d05` for runs that need mo
 
 ## Where results go
 
-- **W&B** ([sarsim-fm](https://wandb.ai/chewycrunch-ucsd/sarsim-fm), group `patchtst` or
-  `patchtst-fm`): loss and learning-rate curves live, eval metrics in the run summary at the end.
+- **W&B** ([sarsim-fm](https://wandb.ai/chewycrunch-ucsd/sarsim-fm), group `patchtst-fm`):
+  loss and learning-rate curves live, eval metrics in the run summary at the end.
 - **Hugging Face Hub**: `<run>/checkpoint-final/` plus `train-log.csv`, `run-config.json`,
-  `timing.json` and `eval/`, e.g. `patchtst-scratch-20k/checkpoint-final`. Intermediate checkpoints
+  `timing.json` and `eval/`, e.g. `patchtst-fm-ft-5k/checkpoint-final`. Intermediate checkpoints
   are not uploaded. The upload also runs if evaluation fails after training finished.
 
 Nothing else survives: the pod's disk is deleted with it, so a run that crashes mid-training
@@ -57,9 +56,9 @@ The job trains whatever is pushed to the branch in its `BRANCH` variable (`patch
 push first.
 
 ```bash
-kubectl apply -f k8s/patchtst-scratch-20k-job.yaml
-kubectl get pods -n ucsd-ubellur-ugcapstone-d05 -l job-name=patchtst-scratch-20k
-kubectl logs -f -n ucsd-ubellur-ugcapstone-d05 job/patchtst-scratch-20k
+kubectl apply -f k8s/patchtst-fm-ft-5k-job.yaml
+kubectl get pods -n ucsd-ubellur-ugcapstone-d05 -l job-name=patchtst-fm-ft-5k
+kubectl logs -f -n ucsd-ubellur-ugcapstone-d05 job/patchtst-fm-ft-5k
 ```
 
 - A pod stays `Pending` until a GPU of the listed types is free.
@@ -75,7 +74,7 @@ kubectl logs -f -n ucsd-ubellur-ugcapstone-d05 job/patchtst-scratch-20k
 ## Using the checkpoints
 
 ```bash
-uv run hf download teyquila/sarsim0-anomaly-models --include "patchtst-scratch-20k/*" --local-dir outputs
+uv run hf download teyquila/sarsim0-anomaly-models --include "patchtst-fm-ft-5k/*" --local-dir outputs
 uv run sfm results
-uv run sfm eval --model patchtst:outputs/patchtst-scratch-20k/checkpoint-final
+uv run sfm eval --model patchtst_fm:outputs/patchtst-fm-ft-5k/checkpoint-final
 ```

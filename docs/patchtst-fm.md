@@ -14,8 +14,6 @@ The configs match their Chronos-2 counterparts (`chronos2-ft-5k`, `chronos2-scra
 SarSim0 stream, seed, effective batch, steps, learning rate and schedule. That gives the grid
 {Chronos-2, PatchTST-FM} × {zero-shot, fine-tuned, scratch}.
 
-It is a different model from the small paper PatchTST in [patchtst.md](patchtst.md) (`patchtst`),
-which has no pretrained weights and stays as a size baseline.
 Code: [`src/sarsim_fm/models/patchtst_fm.py`](../src/sarsim_fm/models/patchtst_fm.py).
 
 ## The model
@@ -49,9 +47,12 @@ exactly, and that future values cannot leak into the predictions.
 
 ## Hardware
 
-About 385M parameters: AdamW in fp32 needs ~6 GB before activations, so fine-tuning and scratch
-training **do not fit an 8 GB GPU** (e.g. the 3070 Ti used for Chronos-2). The 5k and 20k configs
-use micro-batch 16 × 16 accumulation (effective 256, as for Chronos-2). Measure first:
+About 385M parameters: weights, gradients and AdamW state in fp32 take ~6 GB. Activations are
+small because the model skips the left padding (`use_pruning`), so a 512-step history only runs
+~80 of its 1,023 patches. An 8 GB GPU (e.g. the 3070 Ti) is therefore borderline at a small
+micro-batch, and a 16 GB Mac trains at micro-batch 4 (`patchtst-fm-ft-1k-b8`: 2.6 s/step on MPS;
+micro-batch 8 swaps). The 5k and 20k configs use micro-batch 16 × 16 accumulation (effective 256,
+as for Chronos-2) and are meant for a large GPU ([nrp.md](nrp.md)). Measure first:
 
 ```bash
 uv run sfm check --config configs/train/patchtst-fm-ft-5k.yaml

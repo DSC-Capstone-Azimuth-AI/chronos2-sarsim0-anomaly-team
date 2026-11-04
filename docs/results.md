@@ -12,6 +12,7 @@ old names listed there.
 | `amazon/chronos-2` (pretrained, zero-shot) | — | — | 0.6343 | 0.5255 | 0.6234 | 0.5102 | 13.11 | 0.9221 | 0.973 |
 | `patchtst_fm` (IBM PatchTST-FM r2, pretrained, zero-shot; Apple MPS, bf16) | — | — | 0.6186 | 0.5126 | 0.6397 | 0.5267 | 13.88 | 0.9756 | 0.956 |
 | `chronos2-ft-1k-b8` (fine-tune, 1k steps × batch 8, lr 1e-5, CPU) | 8k | 24.7 min (CPU) | 0.6289 | 0.5216 | 0.6158 | 0.5045 | 13.08 | 0.9174 | 0.960 |
+| `patchtst-fm-ft-1k-b8` (fine-tune PatchTST-FM r2, 1k steps × 4 × grad_accum 2, lr 1e-5, Apple MPS) | 8k | 42.9 min (MPS) | 0.6167 | 0.5104 | 0.6321 | 0.5207 | 13.55 | 0.9466 | 0.957 |
 | `chronos2-ft-500` (fine-tune, `chronos2-ft-5k` cut to 500 steps × 256, lr 1e-5) | 128k | 11.0 min (3070 Ti) | 0.6248 | 0.5176 | 0.6105 | 0.4987 | **12.75** | **0.9038** | 0.973 |
 | `chronos2-ft-5k` (fine-tune, full config: 5k steps × 256, lr 1e-5) | 1.28M | 1.83 h (3070 Ti) | **0.6176** | **0.5114** | **0.6054** | **0.4937** | 12.89 | 0.9242 | 0.965 |
 | `chronos2-scratch-20k` (random init, SarSim0 only: 20k steps × 64 × grad_accum 4, lr 1e-4 cosine) | 5.12M | 7.21 h (3070 Ti) | 0.7024 | 0.5795 | 0.8300 | 0.6726 | 16.63 | 1.3712 | 0.867 |
@@ -19,7 +20,8 @@ old names listed there.
 Commands:
 `sfm train configs/train/chronos2-ft-5k.yaml --set train.max_steps=500 --set name=chronos2-ft-500`,
 `sfm train configs/train/chronos2-ft-5k.yaml` and
-`sfm train configs/train/chronos2-scratch-20k.yaml`.
+`sfm train configs/train/chronos2-scratch-20k.yaml` and
+`sfm train configs/train/patchtst-fm-ft-cpu.yaml`.
 
 - The pretrained Chronos-2 M4 numbers reproduce the original pipeline exactly (sMAPE 0.1311438,
   MASE 0.9220801).
@@ -53,7 +55,17 @@ Commands:
   slightly narrow on M4 (98% coverage 0.956). It is ~10× slower to evaluate than Chronos-2. Run on
   Apple MPS, where IBM's code uses bf16; on 64 M4 Quarterly series this moved the aggregate
   quantile loss by 0.1% vs. CPU. Not yet checked: whether its pretraining data includes M4.
-  Fine-tuning (`patchtst-fm-ft-5k`) needs a GPU with more than 8 GB.
+  The full fine-tune (`patchtst-fm-ft-5k`) is planned on NRP ([nrp.md](nrp.md)).
+- **A small PatchTST-FM fine-tune (`patchtst-fm-ft-1k-b8`, matched to `chronos2-ft-1k-b8`: same
+  8k series, lr 1e-5) improved M4 Monthly but hurt M4 Quarterly.** Paired per-series bootstrap vs.
+  zero-shot PatchTST-FM: ΔMASE −0.029 on M4 Monthly (95% CI [−0.030, −0.028]; 57% of series
+  improved), −0.008 on sim_ood_season ([−0.011, −0.005]), −0.002 on sim_iid ([−0.007, +0.005],
+  no change), but **+0.007 on M4 Quarterly** ([+0.005, +0.010]; 45% improved). The M4 Monthly gain
+  (−3.0%) is much larger than `chronos2-ft-1k-b8`'s (−0.5%), yet it still trails Chronos-2 there
+  (0.947 vs. 0.917–0.922). Because Quarterly is the validation set, this run does not clearly
+  beat zero-shot PatchTST-FM. Training loss was flat and noisy (2.52 → 2.49 averaged over
+  200-step windows), as for `chronos2-ft-1k-b8`. Training took 42.9 min (2.6 s/step); evaluation
+  took 1.7 h on MPS. One seed only.
 - M4 Quarterly (validation set), zero-shot, context 512, Apple MPS:
 
   | Model | sMAPE % | MASE | SQL | Cov 80 | Cov 98 |
@@ -61,6 +73,7 @@ Commands:
   | Seasonal naive | 12.52 | 1.6022 | 1.6022 | 0.004 | 0.004 |
   | `amazon/chronos-2` | **10.43** | **1.2008** | **0.9581** | 0.756 | 0.981 |
   | `patchtst_fm` (r2) | 10.61 | 1.2223 | 0.9799 | 0.729 | 0.950 |
+  | `patchtst-fm-ft-1k-b8` | 10.65 | 1.2298 | 0.9851 | 0.724 | 0.950 |
 
   Commands: `sfm eval --model patchtst_fm --device mps` and
   `sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --device mps --datasets m4_quarterly`.

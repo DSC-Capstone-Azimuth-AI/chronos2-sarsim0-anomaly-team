@@ -1,7 +1,6 @@
 """PatchTST-FM r2 (IBM Granite): a pretrained zero-shot PatchTST, fine-tuned or trained from scratch on SarSim0.
 
-Unlike `models/patchtst.py` (the paper's 0.4M model, no pretrained weights), this is a ~385M
-foundation model pretrained on real and synthetic corpora, so it plays the role `amazon/chronos-2`
+A ~385M foundation model pretrained on real and synthetic corpora, so it plays the role `amazon/chronos-2`
 plays for Chronos-2: `init: pretrained` fine-tunes it, `init: scratch` trains the same architecture
 from random weights. The model code is vendored (`models/vendor/patchtst_fm`, see its README).
 

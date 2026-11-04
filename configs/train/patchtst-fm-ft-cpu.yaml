@@ -1,0 +1,18 @@
+# Small fine-tune matched to chronos2-ft-1k-b8 (chronos2-ft-cpu.yaml): 1k steps x 8 series, lr 1e-5,
+# 50 warmup steps, same seed and eval sets. Sized for a 16 GB Mac: micro-batch 4 x 2 accumulation
+# (batch 8 swaps), ~13 s/step on Apple MPS -> ~3.5 h plus eval.
+inherit: _base-patchtst-fm.yaml
+name: patchtst-fm-ft-1k-b8
+
+data:
+  batch_size: 4
+
+train:
+  max_steps: 1000
+  learning_rate: 1.0e-5
+  warmup_steps: 50
+  grad_accum: 2
+  save_steps: 500
+
+runtime:
+  device: mps

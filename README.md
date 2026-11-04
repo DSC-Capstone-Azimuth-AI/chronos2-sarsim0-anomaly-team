@@ -108,9 +108,6 @@ uv run sfm train configs/train/chronos2-ft-cpu.yaml
 # Modify settings on the fly
 uv run sfm train configs/train/chronos2-ft-5k.yaml --set train.max_steps=500 --set name=chronos2-ft-500
 
-# PatchTST: same stream and eval sets, trained from scratch (comparison guide: docs/patchtst.md)
-uv run sfm train configs/train/patchtst-scratch-20k.yaml
-
 # PatchTST-FM r2: IBM's pretrained PatchTST, zero-shot / fine-tuned / scratch (docs/patchtst-fm.md)
 uv run sfm eval --model patchtst_fm
 uv run sfm train configs/train/patchtst-fm-ft-5k.yaml
@@ -156,7 +153,6 @@ uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>
 | Doc | What's in it |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | One training step, repo layout, what each module does, adding a model |
-| [docs/patchtst.md](docs/patchtst.md) | PatchTST: how it differs from Chronos-2, running the comparison |
 | [docs/patchtst-fm.md](docs/patchtst-fm.md) | PatchTST-FM r2: IBM's pretrained PatchTST, pretrained vs. scratch like Chronos-2 |
 | [docs/evaluation.md](docs/evaluation.md) | Eval sets, metric definitions, known data issues |
 | [docs/results.md](docs/results.md) | Experiments log: every run vs. baselines, with analysis |

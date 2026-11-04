@@ -448,7 +448,7 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=cmd_train)
 
     p = sub.add_parser("eval", help="zero-shot evaluation of one or more models")
-    p.add_argument("--model", action="append", required=True, help="e.g. chronos2:amazon/chronos-2, patchtst:outputs/<run>/checkpoint-final (repeatable)")
+    p.add_argument("--model", action="append", required=True, help="e.g. chronos2:amazon/chronos-2, patchtst_fm:outputs/<run>/checkpoint-final (repeatable)")
     p.add_argument("--datasets", nargs="*", default=[], help="eval set names (default: all in data/eval)")
     p.add_argument("--out", help="output dir (default outputs/baselines/<model>)")
     p.add_argument("--batch-size", type=int, default=64)
