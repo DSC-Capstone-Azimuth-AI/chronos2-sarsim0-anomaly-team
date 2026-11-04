@@ -1,6 +1,6 @@
 # Training on NRP (Nautilus) GPUs
 
-Kubernetes Jobs in namespace `ucsd-ubellur-ugcapstone` for runs that need more than a laptop or an
+Kubernetes Jobs in namespace `ucsd-ubellur-ugcapstone-d05` for runs that need more than a laptop or an
 8 GB card. Each job:
 
 1. clones a branch and installs the project (`uv sync --extra cu130 --extra wandb`);
@@ -44,12 +44,12 @@ Create it once. `read -s` keeps the values out of shell history (zsh syntax; in 
 `read -sp "prompt: " VAR`):
 
 ```bash
-read -s "WANDB_API_KEY?W&B key: " && echo && read -s "HF_TOKEN?HF token: " && echo && read -s "GITHUB_TOKEN?GitHub token: " && echo && kubectl create secret generic sarsim-secrets -n ucsd-ubellur-ugcapstone --from-literal=wandb-api-key="$WANDB_API_KEY" --from-literal=hf-token="$HF_TOKEN" --from-literal=github-token="$GITHUB_TOKEN"
+read -s "WANDB_API_KEY?W&B key: " && echo && read -s "HF_TOKEN?HF token: " && echo && read -s "GITHUB_TOKEN?GitHub token: " && echo && kubectl create secret generic sarsim-secrets -n ucsd-ubellur-ugcapstone-d05 --from-literal=wandb-api-key="$WANDB_API_KEY" --from-literal=hf-token="$HF_TOKEN" --from-literal=github-token="$GITHUB_TOKEN"
 ```
 
-To rotate a token, `kubectl delete secret sarsim-secrets -n ucsd-ubellur-ugcapstone` and create
+To rotate a token, `kubectl delete secret sarsim-secrets -n ucsd-ubellur-ugcapstone-d05` and create
 it again. You must be a member of the namespace (`kubectl auth can-i create jobs -n
-ucsd-ubellur-ugcapstone` says `yes`); ask the namespace admin otherwise.
+ucsd-ubellur-ugcapstone-d05` says `yes`); ask the namespace admin otherwise.
 
 ## Running
 
@@ -58,8 +58,8 @@ push first.
 
 ```bash
 kubectl apply -f k8s/patchtst-scratch-20k-job.yaml
-kubectl get pods -n ucsd-ubellur-ugcapstone -l job-name=patchtst-scratch-20k
-kubectl logs -f -n ucsd-ubellur-ugcapstone job/patchtst-scratch-20k
+kubectl get pods -n ucsd-ubellur-ugcapstone-d05 -l job-name=patchtst-scratch-20k
+kubectl logs -f -n ucsd-ubellur-ugcapstone-d05 job/patchtst-scratch-20k
 ```
 
 - A pod stays `Pending` until a GPU of the listed types is free.
@@ -69,7 +69,7 @@ kubectl logs -f -n ucsd-ubellur-ugcapstone job/patchtst-scratch-20k
 - `backoffLimit: 0`: a crashed run is not retried, since there is no resume and a retry would
   start from step 0. A finished Job and its logs are deleted after a day
   (`ttlSecondsAfterFinished`); delete it sooner to apply it again:
-  `kubectl delete job <name> -n ucsd-ubellur-ugcapstone`.
+  `kubectl delete job <name> -n ucsd-ubellur-ugcapstone-d05`.
 - Uploading a run name that is already in the repo replaces those files in a new commit.
 
 ## Using the checkpoints

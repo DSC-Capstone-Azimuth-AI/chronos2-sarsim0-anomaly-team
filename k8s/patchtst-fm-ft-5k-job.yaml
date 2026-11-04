@@ -4,7 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: patchtst-fm-ft-5k
-  namespace: ucsd-ubellur-ugcapstone
+  namespace: ucsd-ubellur-ugcapstone-d05
 spec:
   backoffLimit: 0                 # a retry would start training again from step 0
   ttlSecondsAfterFinished: 86400  # the finished job and its logs are removed a day later
