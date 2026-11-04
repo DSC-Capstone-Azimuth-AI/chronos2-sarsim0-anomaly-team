@@ -1,0 +1,70 @@
+# Train PatchTST-FM r2 from random weights on SarSim0 only (configs/train/patchtst-fm-scratch-20k.yaml)
+# on one 80 GB GPU, log to W&B and upload the run to teyquila/sarsim0-anomaly-models.
+# Needs sarsim-secrets (docs/nrp.md).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: patchtst-fm-scratch-20k
+  namespace: ucsd-ubellur-ugcapstone
+spec:
+  backoffLimit: 0                 # a retry would start training again from step 0
+  ttlSecondsAfterFinished: 86400  # the finished job and its logs are removed a day later
+  template:
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product   # 80 GB+ cards; micro-batch 16 at 385M params
+                operator: In
+                values:
+                - NVIDIA-A100-SXM4-80GB
+                - NVIDIA-A100-80GB-PCIe
+                - NVIDIA-H100-80GB-HBM3
+                - NVIDIA-H200-NVL
+      containers:
+      - name: train
+        image: python:3.11-bookworm
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -euo pipefail
+          pip install --quiet uv==0.13.7
+          git clone --depth 1 --branch "$BRANCH" \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git" repo
+          cd repo
+          git remote set-url origin https://github.com/DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git
+          bash scripts/nrp-train.sh configs/train/patchtst-fm-scratch-20k.yaml
+        env:
+        - name: BRANCH
+          value: patchtst-chronos2
+        - name: WANDB_GROUP
+          value: patchtst-fm
+        - name: GITHUB_TOKEN
+          valueFrom: {secretKeyRef: {name: sarsim-secrets, key: github-token}}
+        - name: WANDB_API_KEY
+          valueFrom: {secretKeyRef: {name: sarsim-secrets, key: wandb-api-key}}
+        - name: HF_TOKEN
+          valueFrom: {secretKeyRef: {name: sarsim-secrets, key: hf-token}}
+        - name: UV_LINK_MODE
+          value: copy
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            cpu: "8"
+            memory: 48Gi
+            ephemeral-storage: 30Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "8"
+            memory: 48Gi
+            ephemeral-storage: 30Gi
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - {name: dshm, mountPath: /dev/shm}   # DataLoader workers share batches here
+      volumes:
+      - name: dshm
+        emptyDir: {medium: Memory, sizeLimit: 8Gi}
