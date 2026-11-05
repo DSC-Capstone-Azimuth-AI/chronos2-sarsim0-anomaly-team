@@ -157,7 +157,6 @@ uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>
 | [docs/evaluation.md](docs/evaluation.md) | Eval sets, metric definitions, known data issues |
 | [docs/results.md](docs/results.md) | Experiments log: every run vs. baselines, with analysis |
 | [docs/wandb.md](docs/wandb.md) | Weights & Biases: setup, commands, sweeps, backfill |
-| [docs/nrp.md](docs/nrp.md) | Training on NRP GPUs with Kubernetes Jobs: secrets, W&B, upload to the Hugging Face Hub |
 | [docs/naming.md](docs/naming.md) | How to name runs, configs and W&B groups |
 | [docs/glossary.md](docs/glossary.md) | Time-series, SarSim0, model, training and evaluation terms |
 

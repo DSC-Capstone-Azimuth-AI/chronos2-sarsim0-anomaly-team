@@ -52,7 +52,7 @@ small because the model skips the left padding (`use_pruning`), so a 512-step hi
 ~80 of its 1,023 patches. An 8 GB GPU (e.g. the 3070 Ti) is therefore borderline at a small
 micro-batch, and a 16 GB Mac trains at micro-batch 4 (`patchtst-fm-ft-1k-b8`: 2.6 s/step on MPS;
 micro-batch 8 swaps). The 5k and 20k configs use micro-batch 16 × 16 accumulation (effective 256,
-as for Chronos-2) and are meant for a large GPU ([nrp.md](nrp.md)). Measure first:
+as for Chronos-2) and are meant for a large GPU. Measure first:
 
 ```bash
 uv run sfm check --config configs/train/patchtst-fm-ft-5k.yaml

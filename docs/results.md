@@ -55,7 +55,7 @@ Commands:
   slightly narrow on M4 (98% coverage 0.956). It is ~10× slower to evaluate than Chronos-2. Run on
   Apple MPS, where IBM's code uses bf16; on 64 M4 Quarterly series this moved the aggregate
   quantile loss by 0.1% vs. CPU. Not yet checked: whether its pretraining data includes M4.
-  The full fine-tune (`patchtst-fm-ft-5k`) is planned on NRP ([nrp.md](nrp.md)).
+  The full fine-tune (`patchtst-fm-ft-5k`) needs a large GPU and has not been run yet.
 - **A small PatchTST-FM fine-tune (`patchtst-fm-ft-1k-b8`, matched to `chronos2-ft-1k-b8`: same
   8k series, lr 1e-5) improved M4 Monthly but hurt M4 Quarterly.** Paired per-series bootstrap vs.
   zero-shot PatchTST-FM: ΔMASE −0.029 on M4 Monthly (95% CI [−0.030, −0.028]; 57% of series
