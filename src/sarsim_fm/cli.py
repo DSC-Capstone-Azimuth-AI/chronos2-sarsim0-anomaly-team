@@ -39,7 +39,7 @@ def cmd_check(args) -> None:
 
     from sarsim_fm.config import load_config
     from sarsim_fm.data.sim import training_stream
-    from sarsim_fm.models import chronos2
+    from sarsim_fm.models import get_timer
     from sarsim_fm.runtime import environment_info
 
     cfg = load_config(args.config, args.set)
@@ -54,10 +54,9 @@ def cmd_check(args) -> None:
     assert torch.isfinite(future[..., : data_cfg["prediction_length"]]).all(), "non-finite target"
     print(f"SarSim0 stream OK: context {tuple(context.shape)}, future_target {tuple(future.shape)}")
 
-    if cfg["model"]["type"] != "chronos2":
-        sys.exit(f"`sfm check` timing only supports chronos2 so far, not {cfg['model']['type']}")
+    timer = get_timer(cfg["model"]["type"])
     print(f"Running {args.steps} training steps on {runtime.device} (bf16={runtime.bf16}) ...")
-    result = chronos2.timed_steps(cfg, runtime, args.steps)
+    result = timer(cfg, runtime, args.steps)
     print(json.dumps(result, indent=2))
     accum = cfg["train"].get("grad_accum", 1)
     per_opt_step = result["sec_per_step"] * accum
@@ -449,7 +448,7 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=cmd_train)
 
     p = sub.add_parser("eval", help="zero-shot evaluation of one or more models")
-    p.add_argument("--model", action="append", required=True, help="e.g. chronos2:amazon/chronos-2 (repeatable)")
+    p.add_argument("--model", action="append", required=True, help="e.g. chronos2:amazon/chronos-2, patchtst_fm:outputs/<run>/checkpoint-final (repeatable)")
     p.add_argument("--datasets", nargs="*", default=[], help="eval set names (default: all in data/eval)")
     p.add_argument("--out", help="output dir (default outputs/baselines/<model>)")
     p.add_argument("--batch-size", type=int, default=64)

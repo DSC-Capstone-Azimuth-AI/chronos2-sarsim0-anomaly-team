@@ -1,0 +1,24 @@
+# "Simulation alone" for PatchTST-FM: the r2 architecture from random init, trained only on SarSim0.
+# Matched to chronos2-scratch-20k (seed, effective batch 256, steps, LR 1e-4, cosine, warmup 1000).
+# Same memory caveat as patchtst-fm-ft-5k. A smaller architecture goes through model.architecture,
+# e.g. --set model.architecture='{n_layer: 12, conv_kernel_size: 3}' (name the run accordingly).
+inherit: _base-patchtst-fm.yaml
+name: patchtst-fm-scratch-20k
+
+model:
+  init: scratch
+
+data:
+  batch_size: 16
+  num_workers: 2
+
+train:
+  max_steps: 20000
+  learning_rate: 1.0e-4
+  lr_scheduler: cosine
+  warmup_steps: 1000
+  grad_accum: 16
+  save_steps: 2000
+
+runtime:
+  device: cuda

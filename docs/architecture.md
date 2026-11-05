@@ -26,6 +26,10 @@ configs/
   train/chronos2-ft-cpu.yaml     fine-tune on a laptop CPU (~25 min)
   train/chronos2-ft-5k.yaml      fine-tune, 5k steps on one GPU (~2 h on a 3070 Ti)
   train/chronos2-scratch-20k.yaml  random init, SarSim0 only ("simulation alone"), 20k steps
+  train/_base-patchtst-fm.yaml   PatchTST-FM r2 defaults (IBM's pretrained PatchTST, same data/eval)
+  train/patchtst-fm-ft-smoke.yaml    100-step PatchTST-FM plumbing check
+  train/patchtst-fm-ft-5k.yaml       fine-tune matched to chronos2-ft-5k
+  train/patchtst-fm-scratch-20k.yaml r2 architecture, random init, matched to chronos2-scratch-20k
   sweeps/chronos2-ft-500-lr.yaml learning-rate grid for the 500-step fine-tune
 src/sarsim_fm/
   cli.py          `sfm` commands
@@ -35,9 +39,11 @@ src/sarsim_fm/
   metrics.py      sMAPE, MASE, scaled quantile loss, coverage
   evaluate.py     score any model on any eval set, save per-series quantiles
   data/           eval-set format, M4 staging, SarSim0 stream + held-out generation
-  models/         registry + one file per model family (chronos2, seasonal naive)
+  models/         registry, shared HF Trainer setup, one file per model family
+                  (chronos2, patchtst_fm, seasonal naive); vendor/ holds
+                  third-party model code (PatchTST-FM, see its README)
 tests/            fast unit tests (`uv run pytest`)
-docs/             guides: architecture, evaluation, results, naming, glossary, wandb
+docs/             guides: architecture, evaluation, results, patchtst-fm, naming, glossary, wandb
 data/  outputs/  external/        generated locally, git-ignored
 ```
 
@@ -55,8 +61,10 @@ and a `run-config.json` behind it.
 | `data/sim.py` | Everything SarSim0. Turns the YAML `sarsim:` block into a `SarSimConfig` (defaults: univariate, no covariates, length 6,000), builds the endless training stream, and writes the fixed held-out sets. | `sarsim_config`, `training_stream`, `make_heldout_split` |
 | `data/m4.py` | Converts M4 Monthly (test) and Quarterly (validation) CSVs into the eval-set format and checks counts and horizons. | `stage_m4`, `FREQUENCIES` |
 | `data/eval_sets.py` | The single on-disk format all eval sets share, with validation on write. | `write_eval_set`, `load_eval_set`, `EvalSet` |
-| `models/__init__.py` | The registry: maps a spec like `chronos2:outputs/run/checkpoint-final` to the code that loads or trains it. | `load_forecaster`, `get_trainer`, `Forecaster` |
+| `models/__init__.py` | The registry: maps a spec like `chronos2:outputs/run/checkpoint-final` to the code that loads, trains or times it. | `load_forecaster`, `get_trainer`, `get_timer`, `Forecaster` |
+| `models/hf.py` | Hugging Face `TrainingArguments` built from a config (shared, so every model trains under identical settings), a Trainer for pre-batched streams, and the raw-step timer behind `sfm check`. | `training_arguments`, `StreamTrainer`, `timed_steps` |
 | `models/chronos2.py` | Chronos-2 specifics: load a checkpoint for forecasting, build a model (pretrained or random weights), train it with the Hugging Face Trainer, and time raw training steps for `sfm check`. | `load`, `build_model`, `train`, `timed_steps` |
+| `models/patchtst_fm.py` | PatchTST-FM r2 specifics: load IBM's pretrained model (or its architecture with random weights), lay out SarSim0 windows the way IBM's inference does, and train with IBM's quantile loss. See [patchtst-fm.md](patchtst-fm.md). | `load`, `build_model`, `train`, `forecast_window`, `forecast_loss` |
 | `models/naive.py` | Seasonal naive baseline. | `SeasonalNaive` |
 | `evaluate.py` | Runs any forecaster on any eval set, scores each series, and saves quantiles plus a summary. | `evaluate`, `save_eval` |
 | `metrics.py` | The metric formulas. | `smape`, `mase`, `naive_scale`, `scaled_quantile_loss`, `quantile_loss`, `coverage` |
@@ -82,8 +90,10 @@ for each eval set in eval.datasets:
 
 1. Write `src/sarsim_fm/models/<name>.py` with `load(path, runtime, context_length)` returning an
    object with `predict_quantiles(contexts, horizon, levels, batch_size, season_lengths)` →
-   array `(n_series, horizon, n_levels)`. Add `train(cfg, runtime, run_dir)` if it is trainable.
-2. Register both in `src/sarsim_fm/models/__init__.py`.
+   array `(n_series, horizon, n_levels)`. Add `train(cfg, runtime, run_dir)` if it is trainable
+   (`models/hf.py` has the shared `TrainingArguments`) and `timed_steps(cfg, runtime, steps)` for
+   `sfm check`. `models/patchtst_fm.py` is an example.
+2. Register them in `src/sarsim_fm/models/__init__.py`.
 3. Add `configs/train/<name>-*.yaml` with `model.type: <name>`.
 
 Next planned: Chronos-Small (T5), the paper's model. Chronos v1 mean-scales and bins values

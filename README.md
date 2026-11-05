@@ -108,6 +108,10 @@ uv run sfm train configs/train/chronos2-ft-cpu.yaml
 # Modify settings on the fly
 uv run sfm train configs/train/chronos2-ft-5k.yaml --set train.max_steps=500 --set name=chronos2-ft-500
 
+# PatchTST-FM r2: IBM's pretrained PatchTST, zero-shot / fine-tuned / scratch (docs/patchtst-fm.md)
+uv run sfm eval --model patchtst_fm
+uv run sfm train configs/train/patchtst-fm-ft-5k.yaml
+
 # 4. Every result so far, as a markdown table (paste into the Experiments log)
 uv run sfm results
 ```
@@ -128,7 +132,7 @@ Each run writes `outputs/<name>/`:
 run-config.json      resolved config + device, package versions, git SHA, dirty flag, SarSim0 commit,
                      and `timing` (train/eval/total seconds, finish time) once the run ends
 train-log.csv        loss, grad norm, learning rate per logging step
-checkpoint-final/    loadable with Chronos2Pipeline.from_pretrained / `--model chronos2:<path>`
+checkpoint-final/    loadable with `--model <model.type>:<path>` (e.g. chronos2:<path>, patchtst_fm:<path>)
 eval/<set>.parquet   per-series metrics + 13 quantiles (0.01 … 0.99) for every horizon step
 eval/summary.json    aggregate metrics per eval set
 ```
@@ -149,6 +153,7 @@ uv run sfm train <config> --set wandb.enabled=true --set wandb.group=<question>
 | Doc | What's in it |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | One training step, repo layout, what each module does, adding a model |
+| [docs/patchtst-fm.md](docs/patchtst-fm.md) | PatchTST-FM r2: IBM's pretrained PatchTST, pretrained vs. scratch like Chronos-2 |
 | [docs/evaluation.md](docs/evaluation.md) | Eval sets, metric definitions, known data issues |
 | [docs/results.md](docs/results.md) | Experiments log: every run vs. baselines, with analysis |
 | [docs/wandb.md](docs/wandb.md) | Weights & Biases: setup, commands, sweeps, backfill |
