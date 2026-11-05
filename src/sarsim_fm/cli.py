@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
+import os
 import re
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from sarsim_fm import tracking
 from sarsim_fm.runtime import ROOT
@@ -190,19 +194,102 @@ def _run_eval(model_spec: str, out_dir: Path, datasets: list[str], args, runtime
         )
 
 
+def _file_sha256(path: Path) -> str | None:
+    """Return a streaming checksum; a missing optional dataset is recorded as null."""
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _dataset_hashes(names: list[str] | None) -> dict[str, str | None]:
+    from sarsim_fm.data.eval_sets import EVAL_DIR, eval_set_path
+
+    names = names if names else sorted(p.stem for p in EVAL_DIR.glob("*.parquet"))
+    return {name: _file_sha256(eval_set_path(name)) for name in names}
+
+
+def _reproducibility_info(cfg: dict, runtime, datasets: list[str] | None) -> dict:
+    """Snapshot what is verifiable without network calls or assuming a HF loader revision."""
+    import torch
+
+    model = cfg.get("model", {})
+    pretrained = model.get("init", "pretrained") != "scratch" and model.get("type") != "seasonal_naive"
+    revision = model.get("revision")
+    return {
+        "uv_lock_sha256": _file_sha256(ROOT / "uv.lock"),
+        "dataset_sha256": _dataset_hashes(datasets),
+        "model_revision": {
+            "source": model.get("base", model.get("spec")),
+            "requested": revision if pretrained else None,
+            "immutable_requested": bool(pretrained and isinstance(revision, str)
+                                        and re.fullmatch(r"[a-fA-F0-9]{40}", revision)),
+            # The pretrained loader is responsible for reporting its actual commit.
+            # A revision configured here does not prove the loader used it.
+            "loaded_commit": None,
+            "verified": False,
+            "applicable": pretrained,
+        },
+        "settings": {
+            "seed": cfg.get("data", {}).get("seed"),
+            "num_workers": cfg.get("data", {}).get("num_workers"),
+            "pythonhashseed": os.environ.get("PYTHONHASHSEED"),
+            "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
+            "torch_deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+            "cudnn_deterministic": torch.backends.cudnn.deterministic,
+            "cudnn_benchmark": torch.backends.cudnn.benchmark,
+            "device": str(runtime.device),
+            "bf16": runtime.bf16,
+            "tf32": runtime.tf32,
+        },
+    }
+
+
+def _run_manifest(cfg: dict, config_file: str | None, runtime,
+                  datasets: list[str] | None, job_type: str) -> dict:
+    from sarsim_fm.runtime import environment_info
+
+    return {
+        "schema_version": 2,
+        "job_type": job_type,
+        "config": cfg,
+        "config_file": config_file,
+        "environment": environment_info(runtime),
+        "reproducibility": _reproducibility_info(cfg, runtime, datasets),
+    }
+
+
+def _baseline_directory(spec: str, explicit: str | None) -> Path:
+    if explicit:
+        path = Path(explicit)
+        if path.exists():
+            raise FileExistsError(f"{path} already exists; choose a new --out to avoid mixing results")
+    else:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        path = OUTPUTS / "baselines" / _safe_name(spec) / f"{stamp}-{uuid4().hex[:12]}"
+    path.mkdir(parents=True, exist_ok=False)
+    return path
+
+
 def cmd_eval(args) -> None:
     if args.out and len(args.model) > 1:
         sys.exit("--out only works with a single --model")
     runtime = _runtime_from(args)
     for spec in args.model:
-        out_dir = Path(args.out) if args.out else OUTPUTS / "baselines" / _safe_name(spec)
+        out_dir = _baseline_directory(spec, args.out)
         print(f"== {spec} → {out_dir}")
         run_cfg = {
             "wandb": {"enabled": args.wandb, "group": "baselines"},
             "model": {"type": spec.split(":", 1)[0], "spec": spec},
             "data": {"context_length": args.context_length},
-            "runtime": {"device": str(runtime.device)},
+            "runtime": {"device": str(runtime.device), "bf16": runtime.bf16},
         }
+        (out_dir / "run-config.json").write_text(
+            json.dumps(_run_manifest(run_cfg, None, runtime, args.datasets, "baseline"), indent=2)
+        )
         tracking.start_run(run_cfg, "baseline", tracking.baseline_name(spec), extra_tags=["baseline"])
         try:
             _run_eval(spec, out_dir, args.datasets, args, runtime, {})
@@ -272,8 +359,6 @@ def _train_and_eval(args, cfg: dict, runtime) -> None:
     import torch
 
     from sarsim_fm.models import get_trainer
-    from sarsim_fm.runtime import environment_info
-
     run_dir = OUTPUTS / cfg["name"]
     if (run_dir / "run-config.json").exists():
         if not args.overwrite:
@@ -283,7 +368,7 @@ def _train_and_eval(args, cfg: dict, runtime) -> None:
 
     (run_dir / "run-config.json").write_text(
         json.dumps(
-            {"config": cfg, "config_file": str(args.config), "environment": environment_info(runtime)},
+            _run_manifest(cfg, str(args.config), runtime, cfg.get("eval", {}).get("datasets"), "train"),
             indent=2,
         )
     )

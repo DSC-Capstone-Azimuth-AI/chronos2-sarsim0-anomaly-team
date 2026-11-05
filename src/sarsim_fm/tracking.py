@@ -105,8 +105,12 @@ def import_run(run_dir: Path, rel_name: str, group: str | None) -> str:
         if cfg.get("wandb", {}).get("enabled"):
             return "skipped (already logged live)"
         cfg = {**cfg, "environment": record.get("environment", {}), "config_file": record.get("config_file")}
-        job_type = "train"
-        tags = [cfg["model"]["type"], cfg["model"].get("init", "pretrained"), "imported"]
+        job_type = record.get("job_type", "train")
+        if job_type == "baseline":
+            tags = ["baseline", "imported"]
+            group = "baselines"
+        else:
+            tags = [cfg["model"]["type"], cfg["model"].get("init", "pretrained"), "imported"]
         timing = record.get("timing", {})
     else:
         first = next(iter(summaries.values()))
