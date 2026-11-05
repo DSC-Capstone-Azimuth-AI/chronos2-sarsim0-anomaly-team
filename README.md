@@ -61,11 +61,37 @@ The M4 clone tracks the upstream default branch. For a strict reproduction, chec
 uv run --locked --extra cpu sfm eval \
   --model seasonal_naive \
   --model chronos2:amazon/chronos-2
+ 
 ```
+
+# PatchTST-FM r2: IBM's pretrained PatchTST, zero-shot / fine-tuned / scratch (docs/patchtst-fm.md)
+uv run sfm eval --model patchtst_fm
+uv run sfm train configs/train/patchtst-fm-ft-5k.yaml
+
+# 4. Every result so far, as a markdown table (paste into the Experiments log)
+uv run sfm results
+
 
 The model ID is not immutable. The uploaded train configs specify `model.base: amazon/chronos-2` but **no commit/revision**. Record the Hugging Face revision actually downloaded; pin it in the model-loading code/config when supported before claiming checkpoint-level reproducibility.
 
-### 3. Train and compare
+| Flag | Effect |
+|---|---|
+| `--device auto\|cpu\|cuda\|cuda:1\|mps` | override `runtime.device` (`auto` = CUDA if available, else CPU) |
+| `--precision auto\|bf16\|fp32` | `auto` = bf16 on GPUs that support it, fp32 otherwise |
+| `--set a.b=value` | override any config field; values are parsed as YAML (`--set eval.datasets=[sim_iid]`) |
+| `--overwrite` | replace an existing run directory with the same `name` |
+| `sfm check --config X --set data.batch_size=128` | measure s/step and peak VRAM before a long run |
+
+Each run writes `outputs/<name>/`:
+
+```text
+run-config.json      resolved config + device, package versions, git SHA, dirty flag, SarSim0 commit,
+                     and `timing` (train/eval/total seconds, finish time) once the run ends
+train-log.csv        loss, grad norm, learning rate per logging step
+checkpoint-final/    loadable with `--model <model.type>:<path>` (e.g. chronos2:<path>, patchtst_fm:<path>)
+eval/<set>.parquet   per-series metrics + 13 quantiles (0.01 … 0.99) for every horizon step
+eval/summary.json    aggregate metrics per eval set
+```
 
 ```bash
 # CPU configuration: runtime.device=cpu, batch_size=8, 1,000 steps.

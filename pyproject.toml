@@ -15,6 +15,8 @@ dependencies = [
   "pandas==3.0.6",
   "pyarrow==26.0.0",
   "pyyaml==6.0.3",
+  # Used by the vendored PatchTST-FM model (src/sarsim_fm/models/vendor/patchtst_fm).
+  "einops==0.8.2",
   # Pinned to the commit the original experiments used.
   "sarsim0 @ git+https://github.com/kashif/sarsim0@71306403a60dd22df031453dbc51aa0567babaec",
 ]
@@ -56,6 +58,7 @@ explicit = true
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["src/sarsim_fm/models/vendor"]  # third-party code, kept as upstream wrote it
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

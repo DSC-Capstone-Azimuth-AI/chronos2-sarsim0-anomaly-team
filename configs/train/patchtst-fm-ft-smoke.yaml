@@ -1,0 +1,13 @@
+# 100-step plumbing check for PatchTST-FM (stream → loss → checkpoint → eval), like chronos2-ft-smoke.
+# Not expected to improve the model. Downloads the ~1.5 GB base checkpoint on first use.
+inherit: _base-patchtst-fm.yaml
+name: patchtst-fm-ft-smoke
+
+data:
+  batch_size: 2
+
+train:
+  max_steps: 100
+  learning_rate: 1.0e-6
+  logging_steps: 1
+  save_steps: 50

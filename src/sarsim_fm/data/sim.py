@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from collections import Counter
 from dataclasses import fields
 from pathlib import Path
+
+# SarSim0's numba `parallel=True` kernels segfault next to torch's OpenMP on macOS; numba's own
+# workqueue layer avoids the clash. Must be set before numba compiles anything.
+if sys.platform == "darwin":
+    os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 
 import numpy as np
 import pandas as pd

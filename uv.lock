@@ -2466,6 +2466,7 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "chronos-forecasting" },
+    { name = "einops" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -2498,6 +2499,7 @@ wandb = [
 requires-dist = [
     { name = "accelerate", specifier = "==1.15.0" },
     { name = "chronos-forecasting", specifier = "==2.3.2" },
+    { name = "einops", specifier = "==0.8.2" },
     { name = "jupyterlab", marker = "extra == 'notebooks'" },
     { name = "matplotlib", marker = "extra == 'notebooks'" },
     { name = "numpy", specifier = "==2.4.6" },
