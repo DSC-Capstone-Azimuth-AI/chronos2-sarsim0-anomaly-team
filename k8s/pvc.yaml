@@ -1,0 +1,13 @@
+# Shared team volume (/data in every pod): run outputs, eval sets, M4 checkout, uv/HF caches.
+# RECORD ONLY: this already exists in ucsd-ubellur-ugcapstone-d05. Don't recreate or delete it.
+# (It was made once with `kubectl apply -f k8s/pvc.yaml` after checking `kubectl get storageclass`.)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: d05-data
+spec:
+  storageClassName: rook-cephfs
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 100Gi
