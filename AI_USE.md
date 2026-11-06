@@ -7,11 +7,11 @@ This file documents how AI tools were used in this project, in line with course 
 
 ## Where AI Was Used
 
-| Area | How AI was used |
-|------|-----------------|
-| Report: references | Helped organize references and draft BibTeX entries
+| Area                              | How AI was used                                           |
+| --------------------------------- | --------------------------------------------------------- |
+| Report: references                | Helped organize references and draft BibTeX entries       |
 | Report: introduction and abstract | Helped brainstorm and draft the introduction and abstract |
-| Code | See below |
+| Code                              | See below                                                 |
 
 ## Env initilization and repo structuring
 
@@ -24,6 +24,7 @@ Setup yaml configs and a cli to it’s easier to add more models, different tuni
 Prompted claude to understand what w&b is, and how we can implement it into our project. Worked on a separate branch, doing test pushes to W&B on smoke tests. Then imported our current results over to W&B using their library. It was here we also decided to split out readme into multiple markdown files in /docs so AI can better understand the project structure. This is also to mark project goals and prevent drift from docs and code. After renaming and organizing our training config yamls to a standard naming convention, we ran a sweep on all our different configs, which were synced and uploaded to w&b.
 
 ## Anomaly Detection
+
 ### 1. Anomaly-detection design and benchmark selection
 
 ### Important prompts
@@ -150,6 +151,52 @@ The implementation included `src/sarsim_fm/anomaly/`, `src/sarsim_fm/data/anomal
 - Discussion of synthetic realism and the limitations of the available results.
 - Repository-based meeting notes and technical summaries.
 
+## PatchTST Configuration
+
+Asked Claude to integrate the PatchTST-FM r2 model on top of our existing repo.
+
+### 1. PatchTST integration
+
+### Important prompts
+
+- “integrate patch-tst model (https://huggingface.co/ibm-granite/granite-timeseries-patchtst-fm-r2) into the current repo / my end goal is to compare the performance of chronos-2 and patch-tst”
+
+### Outputs
+
+- First PatchTST integration: the small PatchTST model, configs, tests, and `docs/patchtst.md`.
+
+### 2. Choosing a PatchTST-FM version
+
+### Important prompts
+
+- “Should I integrate patchtst fm r1 or patchtst fm r2”
+
+### Outputs
+
+- An explanation of which PatchTST-FM model works best for our setup.
+
+### 3. Local smoke test and CPU fine-tuning
+
+### Important prompts
+
+- “run patchtst-fm-ft-smoke first… If that works, create and run patchtst-fm-ft-1k-b8”
+
+### Outputs
+
+- The smoke run passed.
+- `patchtst-fm-ft-1k-b8` trained on MPS (43 min) and was evaluated (1.7 h).
+- The config was later renamed `patchtst-fm-ft-cpu.yaml`.
+
+### 4. Initial results analysis
+
+### Important prompts
+
+- “analyze the result for patchtst_fm vs chronos2 and patchtst-fm-ft-1k-b8 vs chronos-ft-1k-b8”
+
+### Outputs
+
+- Reran `chronos2-ft-1k-b8` and re-scored zero-shot Chronos-2 on the Mac, so all four models use the same eval sets.
+- Compared models series by series, with 95% bootstrap confidence intervals.
 
 ## NRP Configuration and Setup
 
