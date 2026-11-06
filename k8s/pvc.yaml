@@ -1,6 +1,6 @@
-# Shared team volume for checkpoints, run outputs, and M4 data.
-# One-time: kubectl apply -f k8s/pvc.yaml
-# Check the storage class first: kubectl get storageclass  (pick a cephfs / ReadWriteMany one)
+# Shared team volume (/data in every pod): run outputs, eval sets, M4 checkout, uv/HF caches.
+# RECORD ONLY: this already exists in ucsd-ubellur-ugcapstone-d05. Don't recreate or delete it.
+# (It was made once with `kubectl apply -f k8s/pvc.yaml` after checking `kubectl get storageclass`.)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

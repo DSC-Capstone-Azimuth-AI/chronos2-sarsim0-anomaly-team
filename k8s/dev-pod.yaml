@@ -1,18 +1,20 @@
 # Interactive GPU pod for debugging and for reading/copying results off the shared volume.
-# NRP deletes pods after 6h; `sleep` is allowed in pods, NOT in Jobs. Rename it to <you>-dev.
+# NRP deletes pods after 6h; `sleep` is allowed in pods, NOT in Jobs.
+# __USER__ is a placeholder (kubectl rejects it as is); fill it in when applying:
 #
-#   kubectl apply -f k8s/dev-pod.yaml
-#   kubectl exec -it david-dev -- bash
+#   sed "s/__USER__/$NRP_USER/g" k8s/dev-pod.yaml | kubectl apply -f -
+#   kubectl exec -it $NRP_USER-dev -- bash
 #     git clone https://github.com/DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team /data/$USER-repo 2>/dev/null; cd /data/$USER-repo
 #     ln -sfn /data/outputs outputs; ln -sfn /data/data data; ln -sfn /data/external external
 #     uv sync --locked --extra cu130 --extra wandb
 #     uv run --locked --extra cu130 --extra wandb sfm check --device cuda
-#   kubectl cp david-dev:/data/outputs/<run> ./outputs/<run>    # copy results to your laptop
-#   kubectl delete pod david-dev        # always delete when done; the GPU is blocked while it runs
+#   kubectl cp $NRP_USER-dev:/data/outputs/<run> ./outputs/<run>    # copy results to your laptop
+#   kubectl delete pod $NRP_USER-dev        # always delete when done; the GPU is blocked while it runs
 apiVersion: v1
 kind: Pod
 metadata:
-  name: david-dev
+  name: __USER__-dev
+  labels: { owner: __USER__ }
 spec:
   restartPolicy: Never
   affinity:
@@ -28,7 +30,7 @@ spec:
     image: ghcr.io/astral-sh/uv:python3.11-bookworm
     command: ["sleep", "21600"]
     env:
-    - { name: USER, value: david }
+    - { name: USER, value: __USER__ }
     - name: WANDB_API_KEY
       valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
     - { name: UV_CACHE_DIR, value: /data/.cache/uv }

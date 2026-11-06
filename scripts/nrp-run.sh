@@ -1,53 +1,102 @@
 #!/usr/bin/env bash
-# Launch any repo CLI command as an NRP GPU Job.
+# Launch any `sfm` command as an NRP GPU Job. See docs/nrp.md.
 #
-#   scripts/nrp-run.sh <run-name> "<command>" [git-ref]
+#   scripts/nrp-run.sh <label> "<command>" [git-ref]
 #
 # Examples:
-#   scripts/nrp-run.sh timing "python -m d05.train --config configs/nrp_a100.yaml --max-steps 100"
-#   scripts/nrp-run.sh chronos-small-01 "python -m d05.train --config configs/chronos_small.yaml" main
+#   scripts/nrp-run.sh check "sfm check --device cuda --steps 100"
+#   scripts/nrp-run.sh ft-5k "sfm train configs/train/chronos2-ft-5k.yaml --set wandb.enabled=true"
 #
-# Env overrides: REPO (owner/name), CPU, MEM, GPUS, IMAGE, INSTALL_CMD
-# Watch:  kubectl logs -f job/<job-name>
-# Outputs land in /data/runs/<job-name>/ on the d05-data volume.
+# Inside <command>, `sfm` means `uv run --locked --extra cu130 --extra wandb sfm`.
+# The Job clones the *pushed* commit (default: your current HEAD) from GitHub.
+# Env overrides: NRP_USER, REPO, CPU, MEM, GPUS, IMAGE. DRY_RUN=1 prints the manifest instead.
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "usage: $0 <run-name> \"<command>\" [git-ref]" >&2
+  echo "usage: $0 <label> \"<command>\" [git-ref]" >&2
   exit 1
 fi
 
-RUN_NAME="$1"
+LABEL="$1"
 RUN_CMD="$2"
 GIT_REF="${3:-$(git rev-parse HEAD)}"
 
-REPO="${REPO:-OWNER/REPO}"   # <-- set your GitHub owner/repo
+NRP_USER="${NRP_USER:-$(id -un)}"
+REPO="${REPO:-DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team}"
 CPU="${CPU:-12}"
 MEM="${MEM:-48Gi}"
 GPUS="${GPUS:-1}"
-IMAGE="${IMAGE:-nvcr.io/nvidia/pytorch:24.04-py3}"
-INSTALL_CMD="${INSTALL_CMD:-pip install -q -e .}"
+IMAGE="${IMAGE:-ghcr.io/astral-sh/uv:python3.11-bookworm}"
 
-# k8s names: lowercase, digits, dashes, <= 63 chars
-JOB_NAME="$(echo "david-${RUN_NAME}-$(date +%m%d-%H%M)" | tr '[:upper:]_' '[:lower:]-' | cut -c1-63)"
+# k8s names: lowercase alphanumerics and dashes, <= 63 chars, alphanumeric at both ends.
+k8s_name() { tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-\n' '-' | cut -c1-63 | sed 's/^-*//; s/-*$//'; }
+NRP_USER="$(echo "$NRP_USER" | k8s_name)"
+JOB_NAME="$(echo "${NRP_USER}-${LABEL}-$(date +%m%d-%H%M)" | k8s_name)"
 
-# Warn if the ref you're launching hasn't been pushed (the pod clones from GitHub)
+# The pod clones from GitHub, so the ref must be on a pushed branch.
+git fetch -q origin 2>/dev/null || true
 if [[ -z "$(git branch -r --contains "$GIT_REF" 2>/dev/null)" ]]; then
-  echo "warning: $GIT_REF may not be pushed; the Job clones from GitHub." >&2
+  echo "warning: $GIT_REF isn't on any pushed branch; the Job clones from GitHub. Push first." >&2
 fi
 
-indent() { sed 's/^/            /'; }
+# Runs inside the pod. Quoted heredoc: nothing here is expanded on your laptop; the pod gets
+# JOB_NAME, REPO, GIT_REF and RUN_CMD as environment variables.
+read -r -d '' POD_SCRIPT <<'SH' || true
+set -euo pipefail
+mkdir -p /data/logs
+{
+  echo "== ${JOB_NAME}: ${REPO} @ ${GIT_REF}"
+  git clone -q "https://github.com/${REPO}.git" /work
+  cd /work
+  git checkout -q "${GIT_REF}"
+  echo "commit: $(git rev-parse HEAD)"
+  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
-kubectl apply -f - <<EOF
+  # outputs/, data/ and external/ live on the shared volume (all gitignored in the repo).
+  for d in outputs data external; do
+    mkdir -p "/data/$d"
+    ln -sfn "/data/$d" "$d"
+  done
+
+  uv sync --locked --extra cu130 --extra wandb
+  sfm() { uv run --locked --extra cu130 --extra wandb sfm "$@"; }
+
+  # Build the shared eval sets once; the lock stops concurrent first jobs from racing.
+  (
+    flock 9
+    if [[ ! -f data/eval/sim_iid.parquet || ! -f data/eval/sim_ood_season.parquet ]]; then
+      sfm make-sim
+    fi
+    if [[ ! -f data/eval/m4_monthly.parquet || ! -f data/eval/m4_quarterly.parquet ]]; then
+      if [[ ! -d external/M4-data/Dataset ]]; then
+        rm -rf external/M4-data
+        git clone -q --depth 1 --filter=blob:none --sparse \
+          https://github.com/Mcompetitions/M4-methods.git external/M4-data
+        git -C external/M4-data sparse-checkout set Dataset
+      fi
+      sfm stage-m4
+    fi
+  ) 9>/data/.eval-sets.lock
+
+  echo "== running: ${RUN_CMD}"
+  eval "${RUN_CMD}"
+} 2>&1 | tee -a "/data/logs/${JOB_NAME}.log"
+SH
+
+indent() { sed "s/^/$(printf '%*s' "$1" '')/"; }
+
+MANIFEST="$(cat <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: ${JOB_NAME}
-  labels: { owner: david, run: "${RUN_NAME}" }
+  labels: { owner: "${NRP_USER}", run: "$(echo "$LABEL" | k8s_name)" }
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 86400
   template:
+    metadata:
+      labels: { owner: "${NRP_USER}" }
     spec:
       restartPolicy: Never
       affinity:
@@ -64,25 +113,19 @@ spec:
         command: ["bash", "-c"]
         args:
         - |
-          set -euo pipefail
-          git clone -q "https://\${GIT_USER}:\${GITHUB_TOKEN}@github.com/${REPO}.git" /work
-          cd /work && git checkout -q "${GIT_REF}"
-          ${INSTALL_CMD}
-          export RUN_DIR="/data/runs/${JOB_NAME}"
-          mkdir -p "\$RUN_DIR"
-          git rev-parse HEAD > "\$RUN_DIR/git-sha.txt"
-          nvidia-smi --query-gpu=name,memory.total --format=csv | tee "\$RUN_DIR/gpu.txt"
-          eval "\$RUN_CMD" 2>&1 | tee "\$RUN_DIR/train.log"
+$(printf '%s\n' "$POD_SCRIPT" | indent 10)
         env:
-        - name: GIT_USER
-          valueFrom: { secretKeyRef: { name: chronos2-github, key: username } }
-        - name: GITHUB_TOKEN
-          valueFrom: { secretKeyRef: { name: chronos2-github, key: token } }
-        - name: WANDB_API_KEY
-          valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+        - { name: JOB_NAME, value: "${JOB_NAME}" }
+        - { name: REPO, value: "${REPO}" }
+        - { name: GIT_REF, value: "${GIT_REF}" }
         - name: RUN_CMD
           value: |
-$(printf '%s\n' "$RUN_CMD" | indent)
+$(printf '%s\n' "$RUN_CMD" | indent 12)
+        - name: WANDB_API_KEY
+          valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+        - { name: UV_CACHE_DIR, value: /data/.cache/uv }
+        - { name: UV_LINK_MODE, value: copy }
+        - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }
           limits:   { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }
@@ -95,9 +138,17 @@ $(printf '%s\n' "$RUN_CMD" | indent)
       - name: shm
         emptyDir: { medium: Memory, sizeLimit: 8Gi }
 EOF
+)"
+
+if [[ -n "${DRY_RUN:-}" ]]; then
+  printf '%s\n' "$MANIFEST"
+  exit 0
+fi
+
+printf '%s\n' "$MANIFEST" | kubectl apply -f -
 
 echo
 echo "Launched ${JOB_NAME} at ${GIT_REF:0:8}"
-echo "  logs:   kubectl logs -f job/${JOB_NAME}"
+echo "  logs:   kubectl logs -f job/${JOB_NAME}   (also /data/logs/${JOB_NAME}.log)"
 echo "  status: kubectl get pods -l job-name=${JOB_NAME}"
 echo "  stop:   kubectl delete job ${JOB_NAME}"
