@@ -33,8 +33,6 @@ spec:
     - { name: USER, value: __USER__ }
     - name: WANDB_API_KEY
       valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
-    - { name: UV_CACHE_DIR, value: /data/.cache/uv }
-    - { name: UV_LINK_MODE, value: copy }
     - { name: HF_HOME, value: /data/.cache/huggingface }
     resources:
       requests: { cpu: "8", memory: "32Gi", nvidia.com/gpu: "1" }
