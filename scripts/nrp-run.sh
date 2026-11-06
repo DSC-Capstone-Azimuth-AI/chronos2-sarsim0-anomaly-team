@@ -48,7 +48,7 @@ mkdir -p /data/logs
   echo "== ${JOB_NAME}: ${REPO} @ ${GIT_REF}"
   git clone -q "https://github.com/${REPO}.git" /work
   cd /work
-  git checkout -q "${GIT_REF}"
+  git checkout -q "${GIT_REF}" 2>/dev/null || { git fetch -q origin "${GIT_REF}" && git checkout -q "${GIT_REF}"; }
   echo "commit: $(git rev-parse HEAD)"
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
@@ -123,8 +123,6 @@ $(printf '%s\n' "$POD_SCRIPT" | indent 10)
 $(printf '%s\n' "$RUN_CMD" | indent 12)
         - name: WANDB_API_KEY
           valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
-        - { name: UV_CACHE_DIR, value: /data/.cache/uv }
-        - { name: UV_LINK_MODE, value: copy }
         - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }
