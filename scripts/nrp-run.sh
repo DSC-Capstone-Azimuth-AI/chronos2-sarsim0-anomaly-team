@@ -123,8 +123,6 @@ $(printf '%s\n' "$POD_SCRIPT" | indent 10)
 $(printf '%s\n' "$RUN_CMD" | indent 12)
         - name: WANDB_API_KEY
           valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
-        - { name: UV_CACHE_DIR, value: /data/.cache/uv }
-        - { name: UV_LINK_MODE, value: copy }
         - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }
