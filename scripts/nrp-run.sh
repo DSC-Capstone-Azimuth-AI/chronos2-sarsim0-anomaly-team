@@ -48,7 +48,7 @@ mkdir -p /data/logs
   echo "== ${JOB_NAME}: ${REPO} @ ${GIT_REF}"
   git clone -q "https://github.com/${REPO}.git" /work
   cd /work
-  git checkout -q "${GIT_REF}"
+  git checkout -q "${GIT_REF}" 2>/dev/null || { git fetch -q origin "${GIT_REF}" && git checkout -q "${GIT_REF}"; }
   echo "commit: $(git rev-parse HEAD)"
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
