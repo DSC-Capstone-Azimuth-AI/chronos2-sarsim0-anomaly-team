@@ -1,0 +1,13 @@
+# Shared team volume for checkpoints, run outputs, and M4 data.
+# One-time: kubectl apply -f k8s/pvc.yaml
+# Check the storage class first: kubectl get storageclass  (pick a cephfs / ReadWriteMany one)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: d05-data
+spec:
+  storageClassName: rook-cephfs
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 100Gi

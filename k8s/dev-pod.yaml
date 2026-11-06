@@ -1,0 +1,47 @@
+# Interactive GPU pod for debugging and for reading/copying results off the shared volume.
+# NRP deletes pods after 6h; `sleep` is allowed in pods, NOT in Jobs. Rename it to <you>-dev.
+#
+#   kubectl apply -f k8s/dev-pod.yaml
+#   kubectl exec -it david-dev -- bash
+#     git clone https://github.com/DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team /data/$USER-repo 2>/dev/null; cd /data/$USER-repo
+#     ln -sfn /data/outputs outputs; ln -sfn /data/data data; ln -sfn /data/external external
+#     uv sync --locked --extra cu130 --extra wandb
+#     uv run --locked --extra cu130 --extra wandb sfm check --device cuda
+#   kubectl cp david-dev:/data/outputs/<run> ./outputs/<run>    # copy results to your laptop
+#   kubectl delete pod david-dev        # always delete when done; the GPU is blocked while it runs
+apiVersion: v1
+kind: Pod
+metadata:
+  name: david-dev
+spec:
+  restartPolicy: Never
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.compute.major   # Ampere or newer -> bf16 support
+            operator: Gt
+            values: ["7"]
+  containers:
+  - name: dev
+    image: ghcr.io/astral-sh/uv:python3.11-bookworm
+    command: ["sleep", "21600"]
+    env:
+    - { name: USER, value: david }
+    - name: WANDB_API_KEY
+      valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+    - { name: UV_CACHE_DIR, value: /data/.cache/uv }
+    - { name: UV_LINK_MODE, value: copy }
+    - { name: HF_HOME, value: /data/.cache/huggingface }
+    resources:
+      requests: { cpu: "8", memory: "32Gi", nvidia.com/gpu: "1" }
+      limits:   { cpu: "8", memory: "32Gi", nvidia.com/gpu: "1" }
+    volumeMounts:
+    - { name: data, mountPath: /data }
+    - { name: shm, mountPath: /dev/shm }
+  volumes:
+  - name: data
+    persistentVolumeClaim: { claimName: d05-data }
+  - name: shm
+    emptyDir: { medium: Memory, sizeLimit: 8Gi }
