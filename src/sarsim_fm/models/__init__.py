@@ -19,7 +19,7 @@ from typing import Protocol
 
 import numpy as np
 
-from sarsim_fm.models import chronos2, naive, patchtst_fm
+from sarsim_fm.models import chronos2, median, naive, patchtst_fm
 from sarsim_fm.runtime import Runtime
 
 
@@ -40,6 +40,7 @@ LOADERS: dict[str, Callable[..., Forecaster]] = {
     "chronos2": chronos2.load,
     "patchtst_fm": patchtst_fm.load,
     "seasonal_naive": naive.load,
+    "rolling_median": median.load,
 }
 
 TRAINERS: dict[str, Callable] = {
