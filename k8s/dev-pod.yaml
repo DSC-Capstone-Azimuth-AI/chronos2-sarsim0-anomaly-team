@@ -33,6 +33,8 @@ spec:
     - { name: USER, value: __USER__ }
     - name: WANDB_API_KEY
       valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+    - name: HF_TOKEN
+      valueFrom: { secretKeyRef: { name: hf-token, key: token, optional: true } }
     - { name: HF_HOME, value: /data/.cache/huggingface }
     resources:
       requests: { cpu: "8", memory: "32Gi", nvidia.com/gpu: "1" }

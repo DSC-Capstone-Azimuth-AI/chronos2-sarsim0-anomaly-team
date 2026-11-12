@@ -123,6 +123,8 @@ $(printf '%s\n' "$POD_SCRIPT" | indent 10)
 $(printf '%s\n' "$RUN_CMD" | indent 12)
         - name: WANDB_API_KEY
           valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+        - name: HF_TOKEN   # write token for `hub.enabled=true` / `sfm push`; optional so jobs run without it
+          valueFrom: { secretKeyRef: { name: hf-token, key: token, optional: true } }
         - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }
