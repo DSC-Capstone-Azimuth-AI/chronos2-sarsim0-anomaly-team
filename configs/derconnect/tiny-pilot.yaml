@@ -1,0 +1,34 @@
+kind: derconnect
+data_kind: artificial_fixture
+name: artificial-offline-pilot
+staged: outputs/derconnect/fixture-stage
+annotations: tests/fixtures/derconnect/annotations.json
+meters: [E2451, E3020]
+months: ['2026-01']
+unexpected: error
+locked: false
+preparation:
+  chunk_size: 2000
+  cadence_seconds: 2
+  sampling_seconds: 60
+  min_coverage: 0.8
+  max_gap_seconds: 10
+  phase_columns: [Active_Power_A, Active_Power_B, Active_Power_C]
+  phase_units: [source_unconfirmed, source_unconfirmed, source_unconfirmed]
+  units_confirmed: false
+  unit: source_unconfirmed
+roles:
+  scale: {start: '2026-01-01T22:00:00Z', end: '2026-01-01T22:10:00Z'}
+  calibration: {start: '2026-01-01T22:10:00Z', end: '2026-01-01T23:00:00Z'}
+  development: {start: '2026-01-01T23:00:00Z', end: '2026-01-01T23:30:00Z'}
+  evaluation: {start: '2026-01-01T23:30:00Z', end: '2026-01-02T00:30:00Z'}
+calibration: {exploratory: false, target_fpr: 0.02, max_points: 200000}
+detection: {context_length: 4, batch_size: 16, min_run_seconds: 120, merge_gap_seconds: 360}
+injections:
+  seed: 42
+  kind: level_shift
+  severity: 6.0
+  duration_seconds: 180
+  windows:
+    - {meter_id: E2451, start: '2026-01-01T23:00:00Z', end: '2026-01-01T23:20:00Z', split: development}
+review: {seed: 42, random_windows: 3, window_seconds: 600}

@@ -1,0 +1,56 @@
+[
+  {
+    "meter_id": "E2451",
+    "signal": "total_active_power",
+    "start": "2026-01-01T22:00:00Z",
+    "end": "2026-01-01T23:30:00Z",
+    "label": "reviewed_normal",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  },
+  {
+    "meter_id": "E2451",
+    "signal": "total_active_power",
+    "start": "2026-01-01T23:30:00Z",
+    "end": "2026-01-01T23:50:00Z",
+    "label": "reviewed_normal",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  },
+  {
+    "meter_id": "E2451",
+    "signal": "total_active_power",
+    "start": "2026-01-01T23:58:00Z",
+    "end": "2026-01-02T00:05:00Z",
+    "label": "anomaly",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  },
+  {
+    "meter_id": "E3020",
+    "signal": "total_active_power",
+    "start": "2026-01-01T22:00:00Z",
+    "end": "2026-01-01T23:30:00Z",
+    "label": "reviewed_normal",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  },
+  {
+    "meter_id": "E3020",
+    "signal": "total_active_power",
+    "start": "2026-01-01T23:30:00Z",
+    "end": "2026-01-01T23:50:00Z",
+    "label": "reviewed_normal",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  },
+  {
+    "meter_id": "E3020",
+    "signal": "total_active_power",
+    "start": "2026-01-01T23:58:00Z",
+    "end": "2026-01-02T00:05:00Z",
+    "label": "anomaly",
+    "label_source": "artificial_fixture",
+    "review_status": "approved"
+  }
+]

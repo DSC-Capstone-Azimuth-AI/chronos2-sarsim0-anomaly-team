@@ -214,3 +214,5 @@ Exact bit-for-bit results across CPU and GPU are not guaranteed due to differing
 **Current headline** ([details](docs/results.md)): a short fine-tune of Chronos-2 on SarSim0 only (`chronos2-ft-500`)
 is the best model on M4 (MASE 0.904 vs. 0.922 pretrained); training 10× longer helps simulated
 data but erases the M4 gain; the from-scratch run is still undertrained.
+DERCONNECT meter data has a separate [offline staging, detection and dashboard export
+workflow](docs/derconnect.md), with versioned UTC file schemas and explicit unknown-label metrics.

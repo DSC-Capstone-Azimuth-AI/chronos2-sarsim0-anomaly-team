@@ -102,3 +102,61 @@ def checkpoint_identity(spec, forecaster=None):
         else:
             raise ValueError("could not identify cached checkpoint weights for reproducible inference")
     return record
+
+
+def derconnect_model_identity(spec, forecaster):
+    """Resolved model identity for either adapter, including sharded HF weights.
+
+    Fail closed for unidentified foundation weights. Offline test doubles must provide
+    an explicit deterministic `derconnect_identity` rather than masquerading as a model.
+    """
+    if hasattr(forecaster, "derconnect_identity"):
+        return {"spec": spec, "origin": "test_double", "identity": forecaster.derconnect_identity}
+    kind, _, location = spec.partition(":")
+    if kind in {"seasonal_naive", "rolling_median"}:
+        return {"spec": spec, "origin": "baseline", "sha256": None}
+    defaults = {"chronos2": "amazon/chronos-2",
+                "patchtst_fm": "ibm-granite/granite-timeseries-patchtst-fm-r2"}
+    location = location or defaults[kind]
+    resolved = getattr(forecaster, "resolved_hub_checkpoint", None)
+    if resolved is not None:
+        if resolved["repository"] != location:
+            raise ValueError("resolved checkpoint repository differs from requested model")
+        directory = Path(resolved["path"])
+        if directory.name != resolved["revision"] or directory.parent.name != "snapshots":
+            raise ValueError("resolved checkpoint path differs from immutable revision")
+        if not any(directory.glob("*.safetensors")) and not any(directory.glob("*.bin")):
+            raise ValueError("resolved checkpoint contains no weights")
+        files = {str(p.relative_to(directory)): file_hash(p) for p in sorted(directory.rglob("*"))
+                 if p.is_file() and ".cache" not in p.relative_to(directory).parts}
+        return {"spec": spec, "origin": "pretrained", "source_repository": location,
+                "resolved_revision": resolved["revision"], "files": files, "sha256": object_hash(files)}
+    if Path(location).is_dir():
+        return checkpoint_identity(f"{kind}:{location}", forecaster)
+    model = forecaster.pipeline.model if hasattr(forecaster, "pipeline") else forecaster.model
+    revision = getattr(model.config, "_commit_hash", None)
+    if not revision:
+        raise ValueError("loaded model has no resolved revision; use a local checkpoint")
+    from huggingface_hub import try_to_load_from_cache
+
+    weights = {}
+    for index_name in ("model.safetensors.index.json", "pytorch_model.bin.index.json"):
+        index = try_to_load_from_cache(location, index_name, revision=revision)
+        if isinstance(index, str):
+            weights[index_name] = file_hash(index)
+            for name in sorted(set(json.loads(Path(index).read_text())["weight_map"].values())):
+                resolved = try_to_load_from_cache(location, name, revision=revision)
+                if not isinstance(resolved, str):
+                    raise ValueError(f"missing cached shard: {name}")  # noqa: TRY004 -- cache miss
+                weights[name] = file_hash(resolved)
+            break
+    if not weights:
+        for name in ("model.safetensors", "pytorch_model.bin"):
+            resolved = try_to_load_from_cache(location, name, revision=revision)
+            if isinstance(resolved, str):
+                weights[name] = file_hash(resolved)
+                break
+    if not weights:
+        raise ValueError("could not identify resolved model weights")
+    return {"spec": spec, "origin": "pretrained", "resolved_revision": revision,
+            "files": weights, "sha256": object_hash(weights)}

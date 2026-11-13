@@ -1,0 +1,270 @@
+{
+  "schema_version": "derconnect-alert-policy/v1",
+  "intervals": "half-open",
+  "tables": {
+    "event-decisions": {
+      "primary_key": [
+        "source_run_id",
+        "detector_id",
+        "meter_id",
+        "signal",
+        "event_id",
+        "policy_application_id"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "source_run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_application_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "event_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "rule_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "candidate_rule_ids": {
+          "type": "string",
+          "nullable": false
+        },
+        "decision": {
+          "type": "string",
+          "nullable": false
+        },
+        "eligibility_status": {
+          "type": "string",
+          "nullable": false
+        },
+        "reason_codes": {
+          "type": "string",
+          "nullable": false
+        },
+        "evidence_hashes": {
+          "type": "string",
+          "nullable": false
+        },
+        "start_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "end_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "decision_data_cutoff_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "reference_actual": {
+          "type": "float64",
+          "nullable": true
+        },
+        "relative_change_min": {
+          "type": "float64",
+          "nullable": true
+        },
+        "relative_change_max": {
+          "type": "float64",
+          "nullable": true
+        },
+        "suppressed": {
+          "type": "bool",
+          "nullable": false
+        },
+        "would_suppress": {
+          "type": "bool",
+          "nullable": true
+        },
+        "time_overlap": {
+          "type": "bool",
+          "nullable": false
+        },
+        "fully_contained": {
+          "type": "bool",
+          "nullable": false
+        },
+        "direction_matches": {
+          "type": "bool",
+          "nullable": true
+        },
+        "magnitude_matches": {
+          "type": "bool",
+          "nullable": true
+        },
+        "qa_passed": {
+          "type": "bool",
+          "nullable": false
+        },
+        "approved": {
+          "type": "bool",
+          "nullable": false
+        }
+      }
+    },
+    "point-decisions": {
+      "primary_key": [
+        "source_run_id",
+        "detector_id",
+        "meter_id",
+        "signal",
+        "timestamp_utc",
+        "policy_application_id"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "source_run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_application_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "timestamp_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "event_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "raw_anomaly_flag": {
+          "type": "int64",
+          "nullable": true
+        },
+        "actionable_flag": {
+          "type": "int64",
+          "nullable": true
+        },
+        "actionable_event_member": {
+          "type": "bool",
+          "nullable": false
+        }
+      }
+    },
+    "hourly-policy-summary": {
+      "primary_key": [
+        "source_run_id",
+        "detector_id",
+        "meter_id",
+        "signal",
+        "timestamp_utc",
+        "policy_application_id"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "source_run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "policy_application_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "timestamp_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "scored_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "raw_flagged_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "retained_flagged_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "actionable_flagged_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "raw_event_starts": {
+          "type": "int64",
+          "nullable": false
+        },
+        "suppressed_event_starts": {
+          "type": "int64",
+          "nullable": false
+        },
+        "actionable_event_starts": {
+          "type": "int64",
+          "nullable": false
+        },
+        "has_raw_event_overlap": {
+          "type": "bool",
+          "nullable": true
+        },
+        "has_actionable_event_overlap": {
+          "type": "bool",
+          "nullable": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,356 @@
+{
+  "schema_version": "derconnect/v1",
+  "intervals": "half-open",
+  "tables": {
+    "predictions": {
+      "primary_key": [
+        "run_id",
+        "detector_id",
+        "meter_id",
+        "signal",
+        "timestamp_utc"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "model_name": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "timestamp_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "bin_end_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "available_at_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "forecast_origin_utc": {
+          "type": "timestamp",
+          "nullable": true
+        },
+        "horizon_steps": {
+          "type": "int64",
+          "nullable": false
+        },
+        "sampling_seconds": {
+          "type": "int64",
+          "nullable": false
+        },
+        "observation_count": {
+          "type": "int64",
+          "nullable": false
+        },
+        "actual": {
+          "type": "float64",
+          "nullable": true
+        },
+        "expected_power": {
+          "type": "float64",
+          "nullable": true
+        },
+        "q01": {
+          "type": "float64",
+          "nullable": true
+        },
+        "q10": {
+          "type": "float64",
+          "nullable": true
+        },
+        "q50": {
+          "type": "float64",
+          "nullable": true
+        },
+        "q90": {
+          "type": "float64",
+          "nullable": true
+        },
+        "q99": {
+          "type": "float64",
+          "nullable": true
+        },
+        "anomaly_score": {
+          "type": "float64",
+          "nullable": true
+        },
+        "threshold": {
+          "type": "float64",
+          "nullable": true
+        },
+        "coverage_fraction": {
+          "type": "float64",
+          "nullable": false
+        },
+        "unit": {
+          "type": "string",
+          "nullable": false
+        },
+        "score_name": {
+          "type": "string",
+          "nullable": false
+        },
+        "event_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "anomaly_type": {
+          "type": "string",
+          "nullable": false
+        },
+        "type_source": {
+          "type": "string",
+          "nullable": false
+        },
+        "prediction_status": {
+          "type": "string",
+          "nullable": false
+        },
+        "quality_flags": {
+          "type": "string",
+          "nullable": false
+        },
+        "calibration_id": {
+          "type": "string",
+          "nullable": true
+        },
+        "anomaly_flag": {
+          "type": "int64",
+          "nullable": true
+        },
+        "event_member": {
+          "type": "bool",
+          "nullable": false
+        }
+      }
+    },
+    "events": {
+      "primary_key": [
+        "run_id",
+        "event_id"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "model_name": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "event_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "start_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "end_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "detected_at_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "peak_timestamp_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "peak_score": {
+          "type": "float64",
+          "nullable": false
+        },
+        "threshold_at_peak": {
+          "type": "float64",
+          "nullable": false
+        },
+        "duration_seconds": {
+          "type": "float64",
+          "nullable": false
+        },
+        "flagged_points": {
+          "type": "int64",
+          "nullable": false
+        },
+        "anomaly_type": {
+          "type": "string",
+          "nullable": false
+        },
+        "type_source": {
+          "type": "string",
+          "nullable": false
+        }
+      }
+    },
+    "quality-events": {
+      "primary_key": [
+        "run_id",
+        "quality_event_id"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "model_name": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "quality_event_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "start_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "end_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "reason": {
+          "type": "string",
+          "nullable": false
+        }
+      }
+    },
+    "hourly-summary": {
+      "primary_key": [
+        "run_id",
+        "detector_id",
+        "meter_id",
+        "signal",
+        "timestamp_utc"
+      ],
+      "columns": {
+        "schema_version": {
+          "type": "string",
+          "nullable": false
+        },
+        "run_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "detector_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "model_name": {
+          "type": "string",
+          "nullable": false
+        },
+        "meter_id": {
+          "type": "string",
+          "nullable": false
+        },
+        "signal": {
+          "type": "string",
+          "nullable": false
+        },
+        "timestamp_utc": {
+          "type": "timestamp",
+          "nullable": false
+        },
+        "valid_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "scored_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "flagged_minutes": {
+          "type": "int64",
+          "nullable": false
+        },
+        "event_count": {
+          "type": "int64",
+          "nullable": false
+        },
+        "has_anomaly": {
+          "type": "bool",
+          "nullable": true
+        },
+        "peak_raw_score": {
+          "type": "float64",
+          "nullable": true
+        },
+        "event_ids": {
+          "type": "string",
+          "nullable": false
+        },
+        "actual_power_mean": {
+          "type": "float64",
+          "nullable": true
+        },
+        "forecast_point_mean": {
+          "type": "float64",
+          "nullable": true
+        },
+        "eligible_bin_count": {
+          "type": "int64",
+          "nullable": false
+        },
+        "coverage_fraction": {
+          "type": "float64",
+          "nullable": false
+        }
+      }
+    }
+  }
+}

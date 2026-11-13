@@ -582,6 +582,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--root", default=str(OUTPUTS))
     p.set_defaults(func=cmd_results)
 
+    from sarsim_fm.derconnect_cli import register
+
+    register(sub)
     args = parser.parse_args(argv)
     args.func(args)
 
