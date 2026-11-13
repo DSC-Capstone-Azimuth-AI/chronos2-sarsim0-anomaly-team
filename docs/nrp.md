@@ -99,6 +99,7 @@ Nothing else to create: the shared volume and W&B secret already exist (see
 | Timing check (s/step, peak VRAM) | `scripts/nrp-run.sh check "sfm check --device cuda --steps 100"` |
 | 100-step smoke train | `scripts/nrp-run.sh smoke "sfm train configs/train/chronos2-ft-smoke.yaml --set name=$NRP_USER-smoke"` |
 | Real run with W&B | `scripts/nrp-run.sh ft-5k "sfm train configs/train/chronos2-ft-5k.yaml --set name=chronos2-ft-5k-nrp --set wandb.enabled=true"` |
+| Real run, uploaded to the Hub | `scripts/nrp-run.sh ft-5k "sfm train configs/train/chronos2-ft-5k.yaml --set name=chronos2-ft-5k-nrp --set wandb.enabled=true --set hub.enabled=true"` (needs the `hf-token` secret, [huggingface.md](huggingface.md#on-nrp)) |
 | Run under another name | `NRP_USER=ali scripts/nrp-run.sh ...` |
 | More CPU/RAM | `CPU=16 MEM=64Gi scripts/nrp-run.sh ...` |
 | Run a specific branch/commit | `scripts/nrp-run.sh <label> "<cmd>" <ref>` |
@@ -145,6 +146,7 @@ kubectl logs -f job/<job-name>      # Ctrl-C stops watching, not the job
 | `/data/.cache/` | uv and Hugging Face caches |
 
 With `--set wandb.enabled=true`, runs also appear in the shared W&B project ([docs/wandb.md](wandb.md)).
+With `--set hub.enabled=true`, the trained model is uploaded to the team's Hugging Face org ([huggingface.md](huggingface.md)).
 To copy files to your laptop, start a [dev pod](#dev-pod) and:
 
 ```bash
@@ -205,6 +207,7 @@ Already created; **don't recreate them**, and check with the team before deletin
 |---|---|
 | PVC `d05-data` (100 Gi, `rook-cephfs`, ReadWriteMany) | shared `/data` volume ([`k8s/pvc.yaml`](../k8s/pvc.yaml) is the record of how it was made) |
 | Secret `wandb-api-key` (key `api-key`) | sets `WANDB_API_KEY` in jobs |
+| Secret `hf-token` (key `token`), optional | sets `HF_TOKEN` in jobs for Hub uploads ([huggingface.md](huggingface.md#on-nrp)) |
 | Secret `chronos2-github` | Git credentials; unused since the repo is public |
 
 Everyone in the namespace can see and `exec` into everyone's pods and read these secrets. Prefix your
