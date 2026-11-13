@@ -1,0 +1,16 @@
+# Native 2-second resolution, one building, 3 days (scripts/stage_derconnect.py --freq 2s
+# --buildings E3020 --start 2026-03-09 --end 2026-03-12 --prefix-end 2026-03-10).
+# Mon Mar 9 is assumed normal; Mar 10-11 holds the low-load stretch found in the hourly runs.
+# A full 5-month run is ~6.5M forecasts per building (~8 h each on Apple MPS), and a 512-step context
+# is only 17 minutes, so this resolution finds short events, not schedule-level ones.
+name: derconnect-2s-pilot
+datasets: [data/anomaly/derconnect-E3020-2s.parquet]
+detector:
+  mode: rolling
+  context_length: 512       # 17 minutes of 2 s readings
+  prediction_length: 1
+  batch_size: 512
+  score: interval_exceedance
+  target_fpr: 0.01
+  # Flags must persist 6 s (3 readings); gaps up to 30 s join into one event.
+  events: {min_run: 3, merge_gap: 15, release_threshold_ratio: 1.0}

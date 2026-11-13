@@ -46,6 +46,11 @@ set -euo pipefail
 mkdir -p /data/logs
 {
   echo "== ${JOB_NAME}: ${REPO} @ ${GIT_REF}"
+  # Clone with the chronos2-github secret when present (needed only if the repo is private). The
+  # credential helper reads it from the environment, so the token never lands in the URL or logs.
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    git config --global credential.helper '!f() { echo "username=${GH_USERNAME}"; echo "password=${GH_TOKEN}"; }; f'
+  fi
   git clone -q "https://github.com/${REPO}.git" /work
   cd /work
   git checkout -q "${GIT_REF}" 2>/dev/null || { git fetch -q origin "${GIT_REF}" && git checkout -q "${GIT_REF}"; }
@@ -123,6 +128,10 @@ $(printf '%s\n' "$POD_SCRIPT" | indent 10)
 $(printf '%s\n' "$RUN_CMD" | indent 12)
         - name: WANDB_API_KEY
           valueFrom: { secretKeyRef: { name: wandb-api-key, key: api-key } }
+        - name: GH_USERNAME
+          valueFrom: { secretKeyRef: { name: chronos2-github, key: username, optional: true } }
+        - name: GH_TOKEN
+          valueFrom: { secretKeyRef: { name: chronos2-github, key: token, optional: true } }
         - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }

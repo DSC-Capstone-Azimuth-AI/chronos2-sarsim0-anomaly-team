@@ -1,0 +1,22 @@
+# Native 2-second resolution, 5 buildings, Jan-May 2026: ~6.5M forecasts per building, so this runs
+# on NRP GPUs, one Job per building (scripts/nrp-derconnect-2s.sh). Stage the data first:
+#   uv run python scripts/stage_derconnect.py <zip> --freq 2s --out data/anomaly/derconnect-2s
+# Jan-Feb is assumed normal (--prefix-end 2026-03-01, as for the hourly runs).
+# A 512-step context is only 17 minutes, so this resolution finds short events (surges, dropouts,
+# stuck readings), not schedule-level ones; the hourly runs cover those.
+name: derconnect-2s
+datasets:
+  - data/anomaly/derconnect-2s/derconnect-E2451-2s.parquet
+  - data/anomaly/derconnect-2s/derconnect-E3020-2s.parquet
+  - data/anomaly/derconnect-2s/derconnect-E3510-2s.parquet
+  - data/anomaly/derconnect-2s/derconnect-E7080-2s.parquet
+  - data/anomaly/derconnect-2s/derconnect-E7085-2s.parquet
+detector:
+  mode: rolling
+  context_length: 512       # 17 minutes of 2 s readings
+  prediction_length: 1
+  batch_size: 1024
+  score: interval_exceedance
+  target_fpr: 0.01
+  # Flags must persist 6 s (3 readings); gaps up to 30 s join into one event.
+  events: {min_run: 3, merge_gap: 15, release_threshold_ratio: 1.0}

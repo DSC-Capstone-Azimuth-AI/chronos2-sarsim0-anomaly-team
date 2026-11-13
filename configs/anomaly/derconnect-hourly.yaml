@@ -1,0 +1,21 @@
+# DERConnect building meters (scripts/stage_derconnect.py): hourly total active power, 5 buildings,
+# Jan-May 2026. No labels: Jan-Feb is assumed normal and calibrates each building's threshold; the
+# output is a list of candidate events for Mar-May, not precision/recall.
+# One file per building so thresholds are fitted per building, not pooled across them.
+name: derconnect-hourly
+datasets:
+  - data/anomaly/derconnect-E2451.parquet
+  - data/anomaly/derconnect-E3020.parquet
+  - data/anomaly/derconnect-E3510.parquet
+  - data/anomaly/derconnect-E7080.parquet
+  - data/anomaly/derconnect-E7085.parquet
+# Not tuned for this data: the synthetic selection has not been run yet.
+detector:
+  mode: rolling
+  context_length: 512       # ~3 weeks of hours: daily and weekly cycles
+  prediction_length: 18
+  batch_size: 128
+  score: interval_exceedance
+  target_fpr: 0.01
+  # min_run 1: at hourly resolution a single flagged hour (e.g. a 1 h drop) is already an event.
+  events: {min_run: 1, merge_gap: 2, release_threshold_ratio: 1.0}
