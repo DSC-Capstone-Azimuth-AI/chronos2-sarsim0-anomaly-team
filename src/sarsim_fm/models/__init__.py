@@ -15,6 +15,7 @@ then register both below (and `timed_steps(cfg, runtime, steps)` for `sfm check`
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -59,6 +60,40 @@ def load_forecaster(spec: str, runtime: Runtime, context_length: int) -> Forecas
     if kind not in LOADERS:
         raise ValueError(f"Unknown model type {kind!r}; known: {sorted(LOADERS)}")
     return LOADERS[kind](path or None, runtime, context_length)
+
+
+def load_derconnect_forecaster(spec: str, runtime: Runtime, context_length: int) -> Forecaster:
+    """Pin a Hub snapshot before loading; config private fields are not provenance.
+
+    Transformers versions need not preserve `_commit_hash` on a loaded model.
+    Resolve config.json to an immutable snapshot, download that exact revision,
+    and load its local directory so the recorded identity describes actual weights.
+    Legacy benchmark loading retains its existing behavior.
+    """
+    kind, _, location = spec.partition(":")
+    defaults = {"chronos2": "amazon/chronos-2",
+                "patchtst_fm": "ibm-granite/granite-timeseries-patchtst-fm-r2"}
+    if kind not in defaults:
+        return load_forecaster(spec, runtime, context_length)
+    location = location or defaults[kind]
+    if Path(location).is_dir():
+        return load_forecaster(spec, runtime, context_length)
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    config_path = Path(hf_hub_download(location, "config.json"))
+    snapshot = config_path.parent
+    if snapshot.parent.name != "snapshots" or not snapshot.name:
+        raise ValueError("could not resolve an immutable Hub snapshot from config.json")
+    revision = snapshot.name
+    resolved = snapshot_download(location, revision=revision,
+                                 allow_patterns=["*.json", "*.safetensors", "*.bin"])
+    if Path(resolved) != snapshot:
+        raise ValueError("downloaded snapshot differs from resolved config revision")
+    forecaster = load_forecaster(f"{kind}:{resolved}", runtime, context_length)
+    forecaster.resolved_hub_checkpoint = {
+        "repository": location, "revision": revision, "path": str(snapshot),
+    }
+    return forecaster
 
 
 def get_trainer(kind: str) -> Callable:

@@ -105,6 +105,11 @@ def validate_config(config: dict) -> None:
     """Reject misspelled keys in the three supported config families."""
     if not isinstance(config, dict):
         raise ValueError("Configuration must be a YAML mapping")  # noqa: TRY004 -- config validation uses ValueError
+    if config.get("kind") == "derconnect_alert_policy":
+        from sarsim_fm.anomaly.alert_policy_config import validate_policy
+
+        validate_policy(config)
+        return
     _check_keys(config, _schema_for(config))
     if config.get("kind") == "derconnect":
         validate_derconnect(config)

@@ -118,6 +118,19 @@ def derconnect_model_identity(spec, forecaster):
     defaults = {"chronos2": "amazon/chronos-2",
                 "patchtst_fm": "ibm-granite/granite-timeseries-patchtst-fm-r2"}
     location = location or defaults[kind]
+    resolved = getattr(forecaster, "resolved_hub_checkpoint", None)
+    if resolved is not None:
+        if resolved["repository"] != location:
+            raise ValueError("resolved checkpoint repository differs from requested model")
+        directory = Path(resolved["path"])
+        if directory.name != resolved["revision"] or directory.parent.name != "snapshots":
+            raise ValueError("resolved checkpoint path differs from immutable revision")
+        if not any(directory.glob("*.safetensors")) and not any(directory.glob("*.bin")):
+            raise ValueError("resolved checkpoint contains no weights")
+        files = {str(p.relative_to(directory)): file_hash(p) for p in sorted(directory.rglob("*"))
+                 if p.is_file() and ".cache" not in p.relative_to(directory).parts}
+        return {"spec": spec, "origin": "pretrained", "source_repository": location,
+                "resolved_revision": resolved["revision"], "files": files, "sha256": object_hash(files)}
     if Path(location).is_dir():
         return checkpoint_identity(f"{kind}:{location}", forecaster)
     model = forecaster.pipeline.model if hasattr(forecaster, "pipeline") else forecaster.model

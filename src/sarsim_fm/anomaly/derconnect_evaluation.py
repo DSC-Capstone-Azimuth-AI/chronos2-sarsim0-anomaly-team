@@ -51,13 +51,16 @@ def _match(events, truths):
     return [(i, j) for j, i in sorted(owners.items())]
 
 
-def evaluate_files(run, parts, annotations):
+def evaluate_files(run, parts, annotations, *, events_override=None, point_transform=None):
     run = Path(run)
-    events = pd.read_parquet(run / "events.parquet")
+    events = (pd.read_parquet(run / "events.parquet") if events_override is None
+              else events_override.copy())
     stats = {}
     sources = sorted({a["label_source"] for a in annotations}) or [None]
     for name in parts:
         frame = pd.read_parquet(run / name)
+        if point_transform is not None:
+            frame = point_transform(frame.copy())
         for source in sources:
             meter, signal, detector = frame.iloc[0][["meter_id", "signal", "detector_id"]]
             key = (meter, signal, detector, source)

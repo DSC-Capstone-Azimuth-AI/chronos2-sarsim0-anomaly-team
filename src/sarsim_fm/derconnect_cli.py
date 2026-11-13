@@ -46,10 +46,39 @@ def injections(args):
 
 def review(args):
     from sarsim_fm.anomaly.derconnect_review import review_bundle
-    review_bundle(args.run, args.out, args.compare_run)
+    review_bundle(args.run, args.out, args.compare_run, isolated_count=args.isolated_flags)
+
+
+def apply_alert_policy(args):
+    from pathlib import Path
+
+    from sarsim_fm.anomaly.alert_policy import apply_policy
+    cfg = load_config(args.config)
+    result = apply_policy(args.run, cfg, args.out, mode=args.mode,
+                          evidence_base=Path(args.config).resolve().parent, annotations=args.annotations)
+    print(json.dumps(result, indent=2))
+
+
+def normalize(args):
+    from sarsim_fm.anomaly.review_annotations import normalize_reviews
+    rows = normalize_reviews(args.reviews, args.mapping, args.out)
+    print(json.dumps({"annotations": len(rows), "out": args.out}))
 
 
 def register(sub):
+    p = sub.add_parser("apply-derconnect-policy", help="verified schedule-policy overlay; no models")
+    p.add_argument("run")
+    p.add_argument("--config", required=True)
+    p.add_argument("--mode", choices=["preview", "active"], default="preview")
+    p.add_argument("--out", required=True)
+    p.add_argument("--annotations")
+    p.set_defaults(func=apply_alert_policy)
+    p = sub.add_parser("normalize-derconnect-reviews", help="approved review mapping to explicit truth")
+    p.add_argument("--reviews", required=True)
+    p.add_argument("--mapping", required=True)
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=normalize)
+
     p = sub.add_parser("stage-derconnect", help="validate and prepare DERCONNECT CSVs without models")
     p.add_argument("--source", required=True)
     p.add_argument("--config", required=True)
@@ -82,4 +111,5 @@ def register(sub):
     p.add_argument("run")
     p.add_argument("--out", required=True)
     p.add_argument("--compare-run")
+    p.add_argument("--isolated-flags", type=int, default=0)
     p.set_defaults(func=review)

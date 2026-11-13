@@ -205,10 +205,12 @@ def detect_derconnect(cfg, spec, out, *, forecaster=None, device="cpu", resume=F
             if not exploratory and not covers_normal(annotations, meter, SIGNAL, *roles[role]):
                 raise ValueError(f"approved reviewed-normal {role} window required for {meter}")
     if forecaster is None:
-        from sarsim_fm.models import load_forecaster
+        from sarsim_fm.models import load_derconnect_forecaster
         from sarsim_fm.runtime import resolve_runtime
 
-        forecaster = load_forecaster(spec, resolve_runtime(device, "fp32"), cfg["detection"]["context_length"])
+        forecaster = load_derconnect_forecaster(
+            spec, resolve_runtime(device, "fp32"), cfg["detection"]["context_length"],
+        )
     model = derconnect_model_identity(spec, forecaster)
     context = cfg["detection"]["context_length"]
     effective_context = context

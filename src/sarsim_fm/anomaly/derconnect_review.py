@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from sarsim_fm.anomaly.derconnect import SIGNAL, stage_manifest
+from sarsim_fm.anomaly.derconnect_artifacts import BundleReader
 from sarsim_fm.anomaly.export import verify_bundle, write_json
 from sarsim_fm.anomaly.provenance import file_hash, object_hash
 from sarsim_fm.data.annotations import covers_normal, load_annotations, window
@@ -99,9 +100,10 @@ def make_injections(cfg, out):
     return scenarios
 
 
-def review_bundle(run, out, compare_run=None):
+def review_bundle(run, out, compare_run=None, *, isolated_count=0):
     run, out = Path(run), Path(out)
-    manifest = verify_bundle(run)
+    reader = BundleReader(run)
+    manifest = reader.manifest
     if out.exists():
         raise FileExistsError(out)
     settings = manifest["resolved_config"].get("review", {})
@@ -117,9 +119,23 @@ def review_bundle(run, out, compare_run=None):
     count = settings.get("random_windows", 10)
     if type(count) is not int or not 0 <= count <= 1000:
         raise ValueError("review random_windows must be between 0 and 1000")
+    if type(isolated_count) is not int or not 0 <= isolated_count <= 1000:
+        raise ValueError("isolated_count must be in 0..1000")
+    isolated, isolated_seen = [], 0
+    isolated_rng = np.random.default_rng(settings.get("seed", 42) + 1)
     other = verify_bundle(compare_run) if compare_run else None
     for name in manifest["prediction_parts"]:
         frame = pd.read_parquet(run / name)
+        for row in frame.loc[frame.anomaly_flag.eq(1) & ~frame.event_member].itertuples():
+            isolated_seen += 1
+            candidate = (row.meter_id, row.timestamp_utc - pd.Timedelta(seconds=width // 2),
+                         "isolated_raw_flag")
+            if len(isolated) < isolated_count:
+                isolated.append(candidate)
+            elif isolated_count:
+                choice = int(isolated_rng.integers(isolated_seen))
+                if choice < isolated_count:
+                    isolated[choice] = candidate
         if other:
             matching = [n for n in other["prediction_parts"] if Path(n).parts[-2:] == Path(name).parts[-2:]]
             if matching:
@@ -146,21 +162,15 @@ def review_bundle(run, out, compare_run=None):
                 if choice < count:
                     reservoir[choice] = candidate
     windows.extend(reservoir)
+    windows.extend(isolated)
     out.mkdir(parents=True)
     templates = []
     for meter, start, reason in sorted(set(windows), key=str):
         end = start + pd.Timedelta(seconds=width)
         review_id = object_hash([manifest["run_id"], meter, start.isoformat(), reason])[:24]
-        frames = []
-        for name in manifest["prediction_parts"]:
-            if Path(name).parent.name != meter:
-                continue
-            day = pd.Timestamp(Path(name).stem, tz="UTC")
-            if day < end and day + pd.Timedelta(days=1) > start:
-                frame = pd.read_parquet(run / name)
-                frames.append(frame[(frame.timestamp_utc >= start) & (frame.timestamp_utc < end)])
-        if frames:
-            pd.concat(frames).sort_values("timestamp_utc").to_parquet(out / f"{review_id}.parquet", index=False)
+        frame = reader.window(meter, SIGNAL, manifest["detector_id"], start, end)
+        if not frame.empty:
+            frame.to_parquet(out / f"{review_id}.parquet", index=False)
         templates.append({"review_id": review_id, "meter_id": meter, "signal": SIGNAL,
                           "start": start.isoformat(), "end": end.isoformat(), "selection_reason": reason,
                           "category": "uncertain", "review_status": "pending", "reviewer": "", "notes": ""})
@@ -172,6 +182,8 @@ def review_bundle(run, out, compare_run=None):
     write_json(out / "review-manifest.json", {"run_id": manifest["run_id"], "seed": settings.get("seed", 42),
                                              "categories": REVIEW_CATEGORIES,
                                              "truth_mapping": None,
+                                             "isolated_flag_windows_requested": isolated_count,
+                                             "isolated_flag_sampling": "reservoir; seed+1; all isolated raw flags eligible",
                                              "note": "Mapping categories to evaluation truth requires approved rules.",
                                              "comparison_run_id": other["run_id"] if other else None,
                                              "files": {p.name: file_hash(p) for p in sorted(out.glob("*"))
