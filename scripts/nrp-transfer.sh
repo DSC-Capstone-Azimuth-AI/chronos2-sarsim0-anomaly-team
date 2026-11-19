@@ -8,6 +8,8 @@
 #
 # Paths on the volume start with /data (the repo's data/ is /data/data, outputs/ is /data/outputs).
 set -euo pipefail
+# Git Bash on Windows rewrites /data/... arguments into Windows paths; keep them as typed.
+export MSYS_NO_PATHCONV=1
 
 if [[ $# -lt 2 ]]; then
   sed -n '2,9p' "$0" >&2
