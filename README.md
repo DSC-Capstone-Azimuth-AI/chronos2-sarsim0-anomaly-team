@@ -1,218 +1,209 @@
 # SarSim0 forecasting and anomaly detection — D05 Anomaly team
 
-Train Chronos-2 forecasters on synthetic [SarSim0](https://github.com/kashif/sarsim0) series, evaluate them zero-shot on held-out simulated and M4 data, and use forecasts to support anomaly detection. The project provides one YAML-driven CLI: `sfm`.
+Train time-series foundation models (Chronos-2, PatchTST-FM) on synthetic
+[SarSim0](https://github.com/kashif/sarsim0) series. Evaluate them zero-shot on held-out simulated
+and real data, and use their forecasts to detect anomalies in real building meter data
+(DERConnect). Everything runs through one YAML-driven CLI, `sfm`.
 
-- **Forecasting:** compare seasonal-naive and pretrained Chronos-2 baselines; fine-tune or train Chronos-2 on SarSim0.
-- **Evaluation:** use simulated IID/OOD sets, M4 Quarterly for model selection, and M4 Monthly as the held-out final test.
-- **Anomalies:** evaluate rolling forecast-based scores and event grouping on labelled synthetic and UCR datasets. Detector modes and thresholds depend on the chosen config; not every detector is simply a q0.01/q0.99 exceedance test. See [anomaly detection](docs/anomaly-detection.md).
-- **Remote GPUs:** `sfm prepare-anomaly-handoff` packages materials for remote evaluation; it does not perform remote training by itself.
+- **Forecasting:** fine-tune or train Chronos-2 and PatchTST-FM on SarSim0. Compare against
+  seasonal naive and the pretrained models on simulated IID/OOD sets, M4 Quarterly (validation) and
+  M4 Monthly (held-out test).
+- **Anomaly detection:** score each reading against its forecast, set thresholds on clean data,
+  and group flags into events. Evaluated on labelled synthetic data and the UCR anomaly archive.
+- **DERConnect:** an offline workflow that stages meter data, runs frozen models and exports
+  dashboard files.
 
-For the architecture and terminology, see [architecture](docs/architecture.md) and the [glossary](docs/glossary.md).
+For how the code fits together, see [architecture](docs/architecture.md) and the
+[glossary](docs/glossary.md).
 
-## Quick start
+## Current results
 
-**Requires:** Git, [uv](https://docs.astral.sh/uv/getting-started/installation/), network access for first-time package/model downloads, and Python **3.11 or 3.12** (`pyproject.toml`: `>=3.11,<3.13`). Commands use a Linux/macOS shell; NVIDIA CUDA 13 support also requires a compatible driver and platform. The lockfile records the concrete resolved versions.
+Details are in [docs/results.md](docs/results.md).
+
+- **`chronos2-ft-500` is the best model on M4 Monthly.** It is a short fine-tune of Chronos-2 on
+  SarSim0 only: MASE 0.904 vs. 0.922 for the pretrained model.
+- **Training 10× longer (`chronos2-ft-5k`) helps on simulated data but erases the M4 gain.**
+- **The from-scratch run (`chronos2-scratch-20k`) is still undertrained.**
+- **Zero-shot PatchTST-FM is competitive but trails Chronos-2 on M4.**
+
+Anomaly detection and DERConnect results are not recorded here yet.
+
+## Setup
+
+**Requires:** Git, [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11 or
+3.12, and network access for first-time package and model downloads.
 
 ```bash
 git clone https://github.com/DSC-Capstone-Azimuth-AI/chronos2-sarsim0-anomaly-team.git
 cd chronos2-sarsim0-anomaly-team
 
-# CPU / laptop: explicitly select the CPU PyTorch distribution.
+# CPU / laptop
 uv sync --locked --extra cpu
 uv run --locked --extra cpu sfm check
-```
 
-On a supported **NVIDIA CUDA 13** machine, use the **other** extra, not both:
-
-```bash
-nvidia-smi
+# NVIDIA GPU with CUDA 13 (driver >= 580): use this extra instead, not both
 uv sync --locked --extra cu130
 uv run --locked --extra cu130 sfm check --device cuda
 ```
 
-Use the **same extra on every later `uv run`**. `uv run` synchronizes the environment by default; a bare `uv run sfm ...` may change the selected PyTorch distribution. `--locked` refuses to re-resolve a stale lockfile rather than updating it silently. This is especially important when moving between CPU and GPU machines. For a self-contained setup check, see the optional `bootstrap-env.sh` in the review bundle.
+**Use the same extra on every `uv sync` and `uv run`.** Leaving it out, or switching it, swaps the
+installed PyTorch build. Add other extras in the same command:
 
-### Pinned packages and what's *not* pinned
+- `--extra dev` for pytest and ruff
+- `--extra wandb` for experiment tracking
+- `--extra notebooks` for plots
 
-The uploaded `pyproject.toml`/`uv.lock` specify `torch==2.14.1` (platform-dependent `+cpu` / `+cu130` wheels), `chronos-forecasting==2.3.2`, `transformers==5.20.2`, and SarSim0 from commit `71306403a60dd22df031453dbc51aa0567babaec`. Direct packages and optional extras resolve through `uv.lock`. For closer reproduction, also standardize the exact Python patch version, uv version, OS/driver, model revision, and dataset revision. Pinning the lockfile does **not** pin the upstream Hugging Face model or the M4 checkout.
+The examples below omit `--locked --extra ...` for brevity.
 
-## Reproduce the forecasting workflow
+Pinned in `uv.lock`: `torch==2.14.1`, `chronos-forecasting==2.3.2`, `transformers==5.20.2`, and
+SarSim0 at commit `71306403`. Not pinned: the Hugging Face model revisions and the M4 checkout.
+Record those for strict reproduction.
 
-Run from the repository root. The CPU example is **CPU-compatible end to end**; for GPU use `--extra cu130` and the GPU-specific training YAML shown below.
+## Forecasting workflow
 
-### 1. Stage held-out evaluation data
+### 1. Stage evaluation data
 
 ```bash
-uv run --locked --extra cpu sfm make-sim
+uv run sfm make-sim     # held-out sim sets from configs/data/sim-heldout.yaml
 
 mkdir -p external
 git clone --depth 1 --filter=blob:none --sparse \
   https://github.com/Mcompetitions/M4-methods.git external/M4-data
 git -C external/M4-data sparse-checkout set Dataset
-git -C external/M4-data rev-parse HEAD  # Record the exact M4 commit
-uv run --locked --extra cpu sfm stage-m4
+git -C external/M4-data rev-parse HEAD   # record the M4 commit
+uv run sfm stage-m4
 ```
 
-The M4 clone tracks the upstream default branch. For a strict reproduction, check out the original experiment's recorded M4 commit before staging. The provided files contain no canonical M4 commit. Simulated data is controlled by `configs/eval/sim-heldout.yaml` (2,000 series each; seeds `1000003`, `2000003`). Anomaly synthetic splits are separate; see the configuration table below.
-
-### 2. Establish baselines
+### 2. Baselines
 
 ```bash
-uv run --locked --extra cpu sfm eval \
-  --model seasonal_naive \
-  --model chronos2:amazon/chronos-2
- 
+uv run sfm eval --model seasonal_naive --model chronos2:amazon/chronos-2 --model patchtst_fm
 ```
 
-# PatchTST-FM r2: IBM's pretrained PatchTST, zero-shot / fine-tuned / scratch (docs/patchtst-fm.md)
-uv run sfm eval --model patchtst_fm
-uv run sfm train configs/train/patchtst-fm-ft-5k.yaml
+### 3. Train
 
-# 4. Every result so far, as a markdown table (paste into the Experiments log)
-uv run sfm results
+```bash
+uv run sfm train configs/train/chronos2-ft-cpu.yaml   # laptop CPU, ~25 min
+uv run sfm train configs/train/chronos2-ft-5k.yaml    # one GPU, ~2 h on a 3070 Ti
+uv run sfm results                                    # every run as a markdown table
+```
 
+| Config (`configs/train/`) | Init | Device | Batch × accum | Steps | LR |
+|---|---|---|---|---:|---:|
+| `chronos2-ft-smoke.yaml` | pretrained | auto | 2 × 1 | 100 | 1e-6 |
+| `chronos2-ft-cpu.yaml` | pretrained | cpu | 8 × 1 | 1,000 | 1e-5 |
+| `chronos2-ft-5k.yaml` | pretrained | cuda | 64 × 4 | 5,000 | 1e-5 |
+| `chronos2-scratch-20k.yaml` | scratch | cuda | 64 × 4 | 20,000 | 1e-4 |
+| `patchtst-fm-ft-smoke.yaml` | pretrained | auto | 2 × 1 | 100 | 1e-6 |
+| `patchtst-fm-ft-cpu.yaml` | pretrained | mps | 4 × 2 | 1,000 | 1e-5 |
+| `patchtst-fm-ft-5k.yaml` | pretrained | cuda | 16 × 16 | 5,000 | 1e-5 |
+| `patchtst-fm-scratch-20k.yaml` | scratch | cuda | 16 × 16 | 20,000 | 1e-4 |
 
-The model ID is not immutable. The uploaded train configs specify `model.base: amazon/chronos-2` but **no commit/revision**. Record the Hugging Face revision actually downloaded; pin it in the model-loading code/config when supported before claiming checkpoint-level reproducibility.
+Shared defaults are in `_base-chronos2.yaml` and `_base-patchtst-fm.yaml`. **Use M4 Quarterly to
+choose models and keep M4 Monthly for the final test.** Comparing candidates repeatedly on M4
+Monthly turns it into a validation set.
+
+### Common flags
 
 | Flag | Effect |
 |---|---|
-| `--device auto\|cpu\|cuda\|cuda:1\|mps` | override `runtime.device` (`auto` = CUDA if available, else CPU) |
+| `--device auto\|cpu\|cuda\|cuda:1\|mps` | Override `runtime.device` (`auto` = CUDA if available, else CPU) |
 | `--precision auto\|bf16\|fp32` | `auto` = bf16 on GPUs that support it, fp32 otherwise |
-| `--set a.b=value` | override any config field; values are parsed as YAML (`--set eval.datasets=[sim_iid]`) |
-| `--overwrite` | replace an existing run directory with the same `name` |
-| `sfm check --config X --set data.batch_size=128` | measure s/step and peak VRAM before a long run |
+| `--set a.b=value` | Override any config field; values are parsed as YAML (`--set eval.datasets=[sim_iid]`) |
+| `--overwrite` | Replace an existing run directory with the same `name` (destructive) |
 
-Each run writes `outputs/<name>/`:
+Change `name` for every distinct experiment; run names follow [docs/naming.md](docs/naming.md).
+`sfm check --config X --set data.batch_size=128` measures seconds per step and peak VRAM before a
+long run.
 
-```text
-run-config.json      resolved config + device, package versions, git SHA, dirty flag, SarSim0 commit,
-                     and `timing` (train/eval/total seconds, finish time) once the run ends
-train-log.csv        loss, grad norm, learning rate per logging step
-checkpoint-final/    loadable with `--model <model.type>:<path>` (e.g. chronos2:<path>, patchtst_fm:<path>)
-eval/<set>.parquet   per-series metrics + 13 quantiles (0.01 … 0.99) for every horizon step
-eval/summary.json    aggregate metrics per eval set
-```
+### Run outputs
 
-```bash
-# CPU configuration: runtime.device=cpu, batch_size=8, 1,000 steps.
-uv run --locked --extra cpu sfm train configs/train/chronos2-ft-cpu.yaml
+Each run writes `outputs/<name>/` (git-ignored):
 
-# A distinct 500-step CPU experiment (same CPU-compatible config).
-uv run --locked --extra cpu sfm train configs/train/chronos2-ft-cpu.yaml \
-  --set train.max_steps=500 --set name=chronos2-ft-500-cpu
+| File | Contents |
+|---|---|
+| `run-config.json` | Resolved config, device, package versions, git SHA and dirty flag, SarSim0 commit, timing |
+| `train-log.csv` | Loss, gradient norm and learning rate per logging step |
+| `checkpoint-final/` | Loadable with `--model <type>:<path>`, e.g. `chronos2:outputs/<name>/checkpoint-final` |
+| `eval/<set>.parquet` | Per-series metrics and 13 quantiles for every horizon step |
+| `eval/summary.json` | Aggregate metrics per eval set |
 
-uv run --locked --extra cpu sfm results
-```
+## Anomaly detection
 
-**GPU training** uses the 5,000-step config, which explicitly requires `runtime.device: cuda` (batch 64, gradient accumulation 4):
+Full guide: [docs/anomaly-detection.md](docs/anomaly-detection.md).
 
 ```bash
-uv run --locked --extra cu130 sfm train configs/train/chronos2-ft-5k.yaml
+uv run sfm make-anomaly-sim configs/data/sim-anomaly-dev.yaml
+uv run sfm make-anomaly-sim configs/data/sim-anomaly-test.yaml
+uv run sfm detect configs/anomaly/synthetic-chronos2.yaml --model chronos2:amazon/chronos-2
+uv run sfm select-anomaly outputs/anomaly/synthetic-dev-chronos2_amazon_chronos-2
+uv run sfm detect configs/anomaly/synthetic-locked.yaml --model chronos2:amazon/chronos-2
+uv run sfm anomaly-results
 ```
 
-The common defaults come from `configs/train/_base-chronos2.yaml`. Not every YAML is device-neutral: `chronos2-ft-cpu.yaml` forces CPU, while `chronos2-ft-5k.yaml` and `chronos2-scratch-20k.yaml` force CUDA. Use the corresponding extra and config, or an explicitly tested `--device` override with memory settings appropriate to that device. Long runs also require the evaluation datasets specified in `eval.datasets` if you want complete comparisons; the current base config comments say missing sets are skipped.
+| Config | Role |
+|---|---|
+| `configs/data/sim-anomaly-dev.yaml` | Synthetic tuning set: 30 series, seed 3100000 |
+| `configs/data/sim-anomaly-test.yaml` | Synthetic test set: 30 anomaly series and 30 normal series |
+| `configs/anomaly/synthetic-chronos2.yaml` | Detector development on the tuning set |
+| `configs/anomaly/synthetic-locked.yaml` | Locked synthetic test; requires `outputs/anomaly/synthetic-selection.json` |
+| `configs/anomaly/ucr-chronos2.yaml` | Locked UCR evaluation; requires the same selection file |
 
-Use M4 Quarterly to tune and choose models. Reserve M4 Monthly for the final evaluation: repeatedly comparing candidates on the latter makes it a de facto validation set.
+**Don't regenerate or re-tune the detector selection during final tests.** Archive
+`synthetic-selection.json` and its checksum with the results. Use `sfm prepare-anomaly-handoff` to
+package a run for a remote GPU.
 
-## Training configuration matrix
+## DERConnect
 
-| Config path (under `configs/train/`) | Initialization | Device in YAML | Batch / accumulation | Steps | Run name |
-|---|---|---|---|---:|---|
-| `chronos2-ft-cpu.yaml` | Pretrained | `cpu` | 8 / 1 | 1,000 | `chronos2-ft-1k-b8` |
-| `chronos2-ft-smoke.yaml` | Pretrained | `auto` (inherited) | 2 / 1 | 100 | `chronos2-ft-smoke` |
-| `chronos2-ft-5k.yaml` | Pretrained | `cuda` | 64 / 4 | 5,000 | `chronos2-ft-5k` |
-| `chronos2-scratch-20k.yaml` | Scratch | `cuda` | 64 / 4 | 20,000 | `chronos2-scratch-20k` |
+DERConnect building meter data has its own offline workflow, with versioned file schemas for the
+dashboard:
 
-`auto` and `--device` affect **runtime choice**, not which PyTorch wheel uv installs. The smoke config inherits a default seed of 42 and default forecast context/target lengths of 512/18. Run names are used for output directories, so change `name` for every distinct experiment; `--overwrite` replaces existing output.
+- [docs/derconnect.md](docs/derconnect.md): staging, detection, evaluation, export
+- [docs/derconnect-output-contract.md](docs/derconnect-output-contract.md): dashboard file contract
+- [docs/derconnect-alert-policy.md](docs/derconnect-alert-policy.md): schedule-policy overlays
 
-## Evaluation and anomaly configuration matrix
+The raw data has no anomaly labels, so nothing in the repo yet measures detection accuracy on real
+meters.
 
-| Config path | Role | Important reproducibility inputs |
+## Shared infrastructure
+
+| Tool | Use | Guide |
 |---|---|---|
-| `configs/eval/sim-heldout.yaml` | Simulated forecasting evaluation | `sim_iid` seed `1000003`; `sim_ood_season` seed `2000003`; 2,000 series per split |
-| `configs/anomaly-data/sim-anomaly-dev.yaml` | Synthetic anomaly tuning | 30 series; seed `3100000` |
-| `configs/anomaly-data/sim-anomaly-test.yaml` | Synthetic anomaly final test | 30 anomaly series, seed `4100000`; 30 normal series, seed `5100000` |
-| `configs/anomaly/synthetic-chronos2.yaml` | Synthetic detector development | `rolling`, `robust_residual`, target FPR `0.02` |
-| `configs/anomaly/synthetic-pilot.yaml` | Three-item pilot | Inherits `synthetic-chronos2.yaml` |
-| `configs/anomaly/synthetic-locked.yaml` | Locked synthetic test | Requires `outputs/anomaly/synthetic-selection.json` |
-| `configs/anomaly/ucr-chronos2.yaml` | Locked UCR evaluation | Requires the same selection artifact; explicit `interval_exceedance` settings |
+| Hugging Face Hub | Trained checkpoints in the private [azimuth-anomaly-detection](https://huggingface.co/azimuth-anomaly-detection) org. Load with `--model chronos2:azimuth-anomaly-detection/chronos2-ft-5k`; upload with `sfm push outputs/<run>` | [docs/huggingface.md](docs/huggingface.md) |
+| Weights & Biases | Optional shared run log at [chewycrunch-ucsd/sarsim-fm](https://wandb.ai/chewycrunch-ucsd/sarsim-fm). Enable with `--set wandb.enabled=true` | [docs/wandb.md](docs/wandb.md) |
+| NRP (Nautilus) | Team GPU namespace. `scripts/nrp-run.sh <label> "<cmd>"` runs any `sfm` command as a Job | [docs/nrp.md](docs/nrp.md) |
 
-*Paths above reflect the logical config groups indicated by the uploaded YAML filenames and original README; check those paths in the complete checkout before running. The original upload contained file basenames without their repository directory paths.*
-
-**Do not regenerate or re-tune the locked detector selection during final tests.** Archive `synthetic-selection.json` with its checksum, the source checkpoint/revision used, and the dataset manifests. The provided YAMLs do not establish how selection-file contents and explicit UCR detector fields are reconciled; inspect the implementation before changing those fields. Likewise, the `sim_ood_season` config includes pairs with period `7`, despite its comment asserting that every period is greater than 52; confirm the generator's semantics before describing that split as fully out-of-distribution.
-
-For actual anomaly commands, scoring, event post-processing, and the handoff command, use [docs/anomaly-detection.md](docs/anomaly-detection.md). The uploaded configuration files alone do not verify those CLI interfaces.
-
-## Outputs and run metadata
-
-A training run is documented to create `outputs/<name>/`:
-
-| Output | Purpose |
-|---|---|
-| `run-config.json` | Resolved config, device, package versions, source revision/dirty flag, SarSim0 commit, timings |
-| `train-log.csv` | Loss, gradient norm, learning rate |
-| `checkpoint-final/` | Trained model for later evaluation; share it with `sfm push` ([docs/huggingface.md](docs/huggingface.md)) |
-| `eval/<set>.parquet` | Per-series evaluation and forecast quantiles |
-| `eval/summary.json` | Aggregated evaluation scores |
-
-Record the following **in addition** to the generated metadata: the exact `uv.lock` hash, Python and uv versions, CUDA driver/GPU type, source revision, M4 Git SHA, pretrained Chronos-2 commit, dataset manifest/checksums, and (for locked detector tests) `synthetic-selection.json` hash. Source/config/lock consistency can be statically checked by the `check-project-configs.py` helper included in this review bundle.
-
-## CLI reference
-
-| Parameter | Meaning |
-|---|---|
-| `--device auto\|cpu\|cuda\|cuda:1\|mps` | Override YAML `runtime.device`; `auto` prefers CUDA when available, otherwise CPU per project README |
-| `--precision auto\|bf16\|fp32` | Override precision; auto uses bf16 when supported |
-| `--set a.b=value` | Override an individual YAML setting; quote values containing shell-sensitive characters |
-| `--overwrite` | Overwrite an existing run directory; destructive |
-| `sfm check --config X --set data.batch_size=128` | Check environment and estimate time/peak VRAM for a config |
-
-## Trained models
-
-`outputs/` is not in git. Trained models are shared on the Hugging Face Hub in the private
-[azimuth-anomaly-detection](https://huggingface.co/azimuth-anomaly-detection) org; after joining it and
-running `uv run hf auth login`, use them by repo id, e.g.
-`uv run sfm eval --model chronos2:azimuth-anomaly-detection/chronos2-ft-5k`.
-Upload with `sfm push outputs/<run>` or `--set hub.enabled=true` on `sfm train`; see
-[docs/huggingface.md](docs/huggingface.md).
-
-## Optional Weights & Biases tracking
-
-The project references [its W&B workspace](https://wandb.ai/chewycrunch-ucsd/sarsim-fm) and [docs/wandb.md](docs/wandb.md). Add the tracking extra **without dropping the backend extra**:
+## Tests
 
 ```bash
-uv sync --locked --extra cu130 --extra wandb
-uv run --locked --extra cu130 --extra wandb wandb login
-uv run --locked --extra cu130 --extra wandb sfm train configs/train/chronos2-ft-5k.yaml \
-  --set wandb.enabled=true --set wandb.group=sarsim-season-ablation
+uv sync --locked --extra cpu --extra dev
+uv run --locked --extra cpu --extra dev pytest -q
+uv run --locked --extra cpu --extra dev ruff check .
 ```
 
-**Sweep warning:** the provided `chronos2-ft-500-lr.yaml` W&B sweep command uses bare `uv run` and forces the same `name=chronos2-ft-500-sweep-lr` for all four learning rates. Without unique output names, runs can collide. Fix and test per-agent naming in the runner before launching the sweep; preserving W&B run IDs alone does not make filesystem output paths unique.
+CI runs the offline test suite on every push
+([.github/workflows/derconnect-offline.yml](.github/workflows/derconnect-offline.yml)).
 
 ## Reproducibility checklist
 
-1. Check out the source SHA and keep the working tree clean, or record an intentional diff.
-2. Use an agreed Python patch version, the tracked `uv.lock`, `uv sync --locked`, and the same `--extra` on every `uv run`.
-3. Pin/record the external M4 Git SHA and Hugging Face model revision; archive held-out data or checksums.
-4. Preserve the exact YAMLs, overrides, and seeds; use unique run names.
-5. Preserve the anomaly selection file before evaluating locked splits, and do not tune on M4 Monthly or UCR test.
-6. Save hardware/driver, run logs, resolved config, source SHA, lockfile hash, and result artifacts.
+1. Start from a clean working tree at a recorded commit.
+2. Use `uv sync --locked` with the same extras everywhere.
+3. Record the M4 commit and the Hugging Face model revisions.
+4. Keep the exact YAMLs, `--set` overrides and seeds; use a unique run name.
+5. Freeze `synthetic-selection.json` before locked tests; never tune on M4 Monthly or UCR.
+6. Keep `run-config.json`, logs and hardware details with the results.
 
-Exact bit-for-bit results across CPU and GPU are not guaranteed due to differing kernels and floating-point behavior; start by seeking repeatable procedures and statistically comparable metrics.
+CPU and GPU results are not bit-identical. Compare runs statistically.
 
-## Further reading
+## Docs
 
-- [Architecture](docs/architecture.md) — training step and package layout
-- [Evaluation](docs/evaluation.md) — datasets, metrics, limitations
-- [Results](docs/results.md) — recorded experiments
-- [Anomaly detection](docs/anomaly-detection.md) — detector configuration and evaluation
-- [Weights & Biases](docs/wandb.md) — tracking and sweeps
-- [Hugging Face Hub](docs/huggingface.md) — downloading and uploading trained models
-- [Naming](docs/naming.md) — experiment conventions
-- [Glossary](docs/glossary.md) — terms
-
-**Current headline** ([details](docs/results.md)): a short fine-tune of Chronos-2 on SarSim0 only (`chronos2-ft-500`)
-is the best model on M4 (MASE 0.904 vs. 0.922 pretrained); training 10× longer helps simulated
-data but erases the M4 gain; the from-scratch run is still undertrained.
-DERCONNECT meter data has a separate [offline staging, detection and dashboard export
-workflow](docs/derconnect.md), with versioned UTC file schemas and explicit unknown-label metrics.
+| Doc | Contents |
+|---|---|
+| [architecture](docs/architecture.md) | Training step, package layout, adding a model |
+| [evaluation](docs/evaluation.md) | Datasets, metrics, limitations |
+| [results](docs/results.md) | Experiment log |
+| [patchtst-fm](docs/patchtst-fm.md) | PatchTST-FM r2 integration |
+| [anomaly-detection](docs/anomaly-detection.md) | Detector, thresholds, events, UCR |
+| [derconnect](docs/derconnect.md) | DERConnect workflow |
+| [huggingface](docs/huggingface.md) · [wandb](docs/wandb.md) · [nrp](docs/nrp.md) | Shared infrastructure |
+| [naming](docs/naming.md) · [glossary](docs/glossary.md) | Conventions and terms |
