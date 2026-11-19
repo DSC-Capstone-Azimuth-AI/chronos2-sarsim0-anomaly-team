@@ -87,6 +87,21 @@ def load_run(run: Path, data_root: Path) -> tuple[str, pd.DataFrame]:
     return config["model"], pd.concat(frames, ignore_index=True)
 
 
+def collect(runs: list[Path], data_root: Path) -> dict[str, pd.DataFrame]:
+    """Scored points per model. Runs of one model split by meter (e.g. one NRP Job per building)
+    are merged; scoring the same meter twice for a model is an error."""
+    points: dict[str, pd.DataFrame] = {}
+    for run in runs:
+        model, frame = load_run(run, data_root)
+        if model in points:
+            overlap = set(points[model].meter) & set(frame.meter)
+            if overlap:
+                raise ValueError(f"{run}: meters {sorted(overlap)} already scored for {model}")
+            frame = pd.concat([points[model], frame], ignore_index=True)
+        points[model] = frame
+    return points
+
+
 def summarize(points: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     return points.groupby(by).agg(
         n=("t", "size"), mase=("abs_err", "mean"), sql=("sql", "mean"),
@@ -141,7 +156,8 @@ def markdown(overall: pd.DataFrame, comparison: pd.DataFrame, reference: str | N
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("runs", nargs="+", type=Path, help="completed `sfm detect` run folders")
+    parser.add_argument("runs", nargs="+", type=Path,
+                        help="completed `sfm detect` run folders; runs of one model split by meter are merged")
     parser.add_argument("--reference", help="model spec to compare against, e.g. chronos2:amazon/chronos-2")
     parser.add_argument("--block", choices=["day", "week"], default="week",
                         help="bootstrap unit within each meter (default: week)")
@@ -152,12 +168,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "outputs" / "e1-forecast-quality")
     args = parser.parse_args()
 
-    points = {}
-    for run in args.runs:
-        model, frame = load_run(run, args.data_root)
-        if model in points:
-            raise ValueError(f"two runs for {model}; pass one run per model")
-        points[model] = frame
+    points = collect(args.runs, args.data_root)
     if args.reference and args.reference not in points:
         raise ValueError(f"--reference {args.reference} is not among the runs: {sorted(points)}")
 

@@ -69,6 +69,18 @@ def test_ranks_models_and_scores_only_evaluation_rows(tmp_path):
     assert comparison.n_units == 2 * 2                  # 2 meters x 2 evaluation weeks
 
 
+def test_merges_runs_split_by_meter_and_rejects_overlap(tmp_path):
+    e1, e2 = _stage(tmp_path, "E1"), _stage(tmp_path, "E2")
+    _run(tmp_path, "m-E1", "m", [e1], noise=1.0)
+    _run(tmp_path, "m-E2", "m", [e2], noise=1.0)
+    _run(tmp_path, "m-again", "m", [e1], noise=1.0)
+
+    points = fq.collect([tmp_path / "m-E1", tmp_path / "m-E2"], tmp_path)
+    assert set(points) == {"m"} and set(points["m"].meter) == {"E1", "E2"}
+    with pytest.raises(ValueError, match="already scored"):
+        fq.collect([tmp_path / "m-E1", tmp_path / "m-again"], tmp_path)
+
+
 def test_rejects_incomplete_run(tmp_path):
     datasets = [_stage(tmp_path, "E1")]
     run = _run(tmp_path, "r", "m", datasets, noise=1.0)
