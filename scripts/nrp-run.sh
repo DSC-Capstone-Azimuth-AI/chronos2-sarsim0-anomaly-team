@@ -132,6 +132,8 @@ $(printf '%s\n' "$RUN_CMD" | indent 12)
           valueFrom: { secretKeyRef: { name: chronos2-github, key: username, optional: true } }
         - name: GH_TOKEN
           valueFrom: { secretKeyRef: { name: chronos2-github, key: token, optional: true } }
+        - name: HF_TOKEN   # write token for hub.enabled=true or sfm push; optional so jobs run without it
+          valueFrom: { secretKeyRef: { name: hf-token, key: token, optional: true } }
         - { name: HF_HOME, value: /data/.cache/huggingface }
         resources:
           requests: { cpu: "${CPU}", memory: "${MEM}", nvidia.com/gpu: "${GPUS}" }

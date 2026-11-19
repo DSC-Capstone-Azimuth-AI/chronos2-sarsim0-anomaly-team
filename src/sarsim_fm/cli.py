@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from sarsim_fm import tracking
+from sarsim_fm import hub, tracking
 from sarsim_fm.runtime import ROOT
 
 OUTPUTS = ROOT / "outputs"
@@ -345,12 +345,34 @@ def cmd_train(args) -> None:
         # Sweep runs share one config file, so make each run directory unique.
         cfg["name"] = run.name = f"{cfg['name']}-{run.id}"
         run.config.update({"name": cfg["name"]}, allow_val_change=True)
+    hub_cfg = hub.settings(cfg)
+    repo_id = hub.repo_id_for(cfg["name"], hub_cfg) if hub_cfg["enabled"] else None
     try:
+        if repo_id:
+            # Check login and repo before hours of training, not after.
+            hub.check_access(repo_id, hub_cfg["overwrite"])
         _train_and_eval(args, cfg, runtime)
     except BaseException:
         tracking.finish(exit_code=1)
         raise
     tracking.finish()
+    if repo_id:
+        _push(OUTPUTS / cfg["name"], repo_id, hub_cfg["private"], hub_cfg["overwrite"])
+
+
+def _push(run_dir: Path, repo_id: str, private: bool, overwrite: bool) -> None:
+    print(f"Uploading {run_dir.name} to {repo_id} ...")
+    try:
+        url = hub.push_run(run_dir, repo_id, private=private, overwrite=overwrite)
+    except hub.HubError as exc:
+        sys.exit(f"Upload failed (the run is kept in {run_dir}): {exc}")
+    print(f"Uploaded: {url}")
+
+
+def cmd_push(args) -> None:
+    run_dir = Path(args.run_dir).resolve()
+    hub_cfg = hub.settings({"hub": {k: v for k, v in (("org", args.org), ("repo", args.repo)) if v}})
+    _push(run_dir, hub.repo_id_for(run_dir.name, hub_cfg), not args.public, args.force)
 
 
 def _train_and_eval(args, cfg: dict, runtime) -> None:
@@ -547,6 +569,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--only", nargs="*", help="run folders relative to --root (default: all)")
     p.add_argument("--group", default="imported", help="W&B group for imported train runs")
     p.set_defaults(func=cmd_wandb_import)
+
+    p = sub.add_parser("push", help="upload a finished run (checkpoint-final + metadata) to the Hugging Face Hub")
+    p.add_argument("run_dir", help="e.g. outputs/chronos2-ft-5k; the folder name becomes the repo name")
+    p.add_argument("--org", help=f"Hub organization (default {hub.DEFAULTS['org']})")
+    p.add_argument("--repo", help="full repo id, overriding <org>/<folder name>")
+    p.add_argument("--public", action="store_true", help="create a public repo (default private)")
+    p.add_argument("--force", action="store_true", help="upload into an existing repo (new commit on top)")
+    p.set_defaults(func=cmd_push)
 
     p = sub.add_parser("results", help="markdown table of every eval summary under outputs/")
     p.add_argument("--root", default=str(OUTPUTS))

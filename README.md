@@ -151,7 +151,7 @@ A training run is documented to create `outputs/<name>/`:
 |---|---|
 | `run-config.json` | Resolved config, device, package versions, source revision/dirty flag, SarSim0 commit, timings |
 | `train-log.csv` | Loss, gradient norm, learning rate |
-| `checkpoint-final/` | Trained model for later evaluation |
+| `checkpoint-final/` | Trained model for later evaluation; share it with `sfm push` ([docs/huggingface.md](docs/huggingface.md)) |
 | `eval/<set>.parquet` | Per-series evaluation and forecast quantiles |
 | `eval/summary.json` | Aggregated evaluation scores |
 
@@ -166,6 +166,15 @@ Record the following **in addition** to the generated metadata: the exact `uv.lo
 | `--set a.b=value` | Override an individual YAML setting; quote values containing shell-sensitive characters |
 | `--overwrite` | Overwrite an existing run directory; destructive |
 | `sfm check --config X --set data.batch_size=128` | Check environment and estimate time/peak VRAM for a config |
+
+## Trained models
+
+`outputs/` is not in git. Trained models are shared on the Hugging Face Hub in the private
+[azimuth-anomaly-detection](https://huggingface.co/azimuth-anomaly-detection) org; after joining it and
+running `uv run hf auth login`, use them by repo id, e.g.
+`uv run sfm eval --model chronos2:azimuth-anomaly-detection/chronos2-ft-5k`.
+Upload with `sfm push outputs/<run>` or `--set hub.enabled=true` on `sfm train`; see
+[docs/huggingface.md](docs/huggingface.md).
 
 ## Optional Weights & Biases tracking
 
@@ -198,6 +207,7 @@ Exact bit-for-bit results across CPU and GPU are not guaranteed due to differing
 - [Results](docs/results.md) — recorded experiments
 - [Anomaly detection](docs/anomaly-detection.md) — detector configuration and evaluation
 - [Weights & Biases](docs/wandb.md) — tracking and sweeps
+- [Hugging Face Hub](docs/huggingface.md) — downloading and uploading trained models
 - [Naming](docs/naming.md) — experiment conventions
 - [Glossary](docs/glossary.md) — terms
 

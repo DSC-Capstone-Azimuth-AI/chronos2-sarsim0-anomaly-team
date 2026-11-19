@@ -52,6 +52,10 @@ _TRAIN_SCHEMA = {
         "enabled": _VALUE, "group": _VALUE, "tags": _VALUE,
         "project": _VALUE, "entity": _VALUE,
     },
+    "hub": {
+        "enabled": _VALUE, "org": _VALUE, "repo": _VALUE,
+        "private": _VALUE, "overwrite": _VALUE,
+    },
 }
 _SIM_SCHEMA = {"defaults": _SIM_FIELDS, "splits": {"*": _SIM_FIELDS}}
 _ANOMALY_SCHEMA = {

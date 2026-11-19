@@ -40,3 +40,10 @@ wandb:
   tags: []                  # model.type, model.init and device are added automatically
   # project / entity default to sarsim-fm / chewycrunch-ucsd (src/sarsim_fm/tracking.py);
   # WANDB_PROJECT / WANDB_ENTITY env vars override them
+
+hub:
+  enabled: false            # true uploads checkpoint-final + run metadata after train and eval (`sfm push` by hand)
+  org: azimuth-anomaly-detection   # repo is <org>/<name>; needs `hf auth login` with a write token
+  repo: null                # full repo id, overriding <org>/<name>
+  private: true
+  overwrite: false          # false refuses to upload into an existing repo (checked before training)

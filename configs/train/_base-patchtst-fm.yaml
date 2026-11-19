@@ -40,3 +40,10 @@ wandb:
   enabled: false
   group: null
   tags: []
+
+hub:
+  enabled: false
+  org: azimuth-anomaly-detection
+  repo: null
+  private: true
+  overwrite: false
