@@ -5,7 +5,6 @@ import hashlib
 import json
 import sys
 import types
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -104,7 +103,7 @@ def _eval_args(out=None, datasets=None):
 
 
 def test_baselines_never_reuse_directories_and_include_manifest(isolated_cli):
-    root, paths, _ = isolated_cli
+    _root, paths, _ = isolated_cli
     cli.cmd_eval(_eval_args())
     cli.cmd_eval(_eval_args())
     assert len(paths) == 2 and paths[0] != paths[1]
@@ -131,7 +130,7 @@ def test_explicit_output_cannot_overwrite(isolated_cli):
 
 
 def test_manifest_records_missing_datasets_and_revision(isolated_cli):
-    root, _, runtime = isolated_cli
+    _root, _, runtime = isolated_cli
     cfg = {
         "model": {"type": "chronos2", "base": "amazon/chronos-2", "revision": "a" * 40},
         "data": {"seed": 42, "num_workers": 2},

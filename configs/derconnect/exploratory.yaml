@@ -1,0 +1,5 @@
+inherit: tiny-pilot.yaml
+name: exploratory-assumed-baseline
+annotations: null
+calibration:
+  exploratory: true

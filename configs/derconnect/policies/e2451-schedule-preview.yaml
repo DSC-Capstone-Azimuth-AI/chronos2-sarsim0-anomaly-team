@@ -1,0 +1,65 @@
+# Development hypothesis only. No schedule, bounds or approval has been verified.
+kind: derconnect_alert_policy
+schema_version: derconnect-alert-policy/v1
+policy_name: e2451-schedule-development
+timezone: America/Los_Angeles
+qa_report: null
+rules:
+- rule_id: e2451-morning
+  enabled: true
+  meter_id: E2451
+  signal: total_active_power
+  weekdays:
+  - mon
+  - tue
+  - wed
+  - thu
+  - fri
+  - sat
+  - sun
+  local_start: 05:55
+  local_end: 06:10
+  effective_start: '2026-03-01T00:00:00Z'
+  effective_end: '2026-04-01T00:00:00Z'
+  expected_direction: increase
+  preceding_context_minutes: 5
+  max_duration_seconds: 300
+  minimum_absolute_reference: null
+  relative_change_lower: null
+  relative_change_upper: null
+  reference: null
+  reference_unit: source_unconfirmed
+  review:
+    status: pending
+    reviewer: null
+    reviewed_at: null
+    schedule_evidence: null
+- rule_id: e2451-evening
+  enabled: true
+  meter_id: E2451
+  signal: total_active_power
+  weekdays:
+  - mon
+  - tue
+  - wed
+  - thu
+  - fri
+  - sat
+  - sun
+  local_start: '22:55'
+  local_end: '23:10'
+  effective_start: '2026-03-01T00:00:00Z'
+  effective_end: '2026-04-01T00:00:00Z'
+  expected_direction: decrease
+  preceding_context_minutes: 5
+  max_duration_seconds: 300
+  minimum_absolute_reference: null
+  relative_change_lower: null
+  relative_change_upper: null
+  reference: null
+  reference_unit: source_unconfirmed
+  review:
+    status: pending
+    reviewer: null
+    reviewed_at: null
+    schedule_evidence: null
