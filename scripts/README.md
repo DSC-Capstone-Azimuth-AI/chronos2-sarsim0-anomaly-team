@@ -19,7 +19,7 @@ files for the dashboard. Configs: `configs/anomaly/derconnect-*.yaml`.
 
 | Script | Does | Run from |
 |---|---|---|
-| [`stage_derconnect.py`](stage_derconnect.py) | Raw DERConnect zip → per-building total-power series (`--freq 1h`, `2s`, ...) in `data/anomaly/` | Your machine |
+| [`stage_derconnect.py`](stage_derconnect.py) | Raw DERConnect zip → per-building total-power series (`--freq 1h`, `2s`, ...) in `data/anomaly/`. The zip lives on the NRP volume ([docs/nrp.md](../docs/nrp.md#derconnect-data)) | Your machine |
 | [`nrp-derconnect-2s.sh`](nrp-derconnect-2s.sh) | One NRP Job per building: 2-second `sfm detect` for one model, then dashboard export | Your machine |
 | [`export_dashboard.py`](export_dashboard.py) | One `sfm detect` run → predictions, forecasts and events tables for the dashboard | Anywhere |
 | [`derconnect/forecast_quality.py`](derconnect/forecast_quality.py) | E1: compare forecast quality of several models' `sfm detect` runs on the same meters | Anywhere |

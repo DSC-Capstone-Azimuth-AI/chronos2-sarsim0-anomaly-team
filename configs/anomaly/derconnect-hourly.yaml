@@ -2,6 +2,7 @@
 # Jan-May 2026. No labels: Jan-Feb is assumed normal and calibrates each building's threshold; the
 # output is a list of candidate events for Mar-May, not precision/recall.
 # One file per building so thresholds are fitted per building, not pooled across them.
+# On NRP these files are already staged on the volume (docs/nrp.md#derconnect-data).
 name: derconnect-hourly
 datasets:
   - data/anomaly/derconnect-E2451.parquet

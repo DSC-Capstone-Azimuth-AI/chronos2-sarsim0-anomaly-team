@@ -15,6 +15,7 @@ your laptop. Results land on a shared volume; W&B logging works the same as on a
 - [Cheat sheet](#cheat-sheet)
 - [Running a job](#running-a-job)
 - [Where results go](#where-results-go)
+- [DERConnect data](#derconnect-data)
 - [Dev pod](#dev-pod)
 - [Which GPU you get](#which-gpu-you-get)
 - [Cluster rules](#cluster-rules)
@@ -143,6 +144,9 @@ kubectl logs -f job/<job-name>      # Ctrl-C stops watching, not the job
 | `/data/logs/<job-name>.log` | full stdout/stderr of the job |
 | `/data/data/eval/` | shared eval sets (`sim_iid`, `sim_ood_season`, `m4_quarterly`, `m4_monthly`) |
 | `/data/external/M4-data/` | M4 checkout used by `sfm stage-m4` |
+| `/data/external/derconnect/Haojian_Data.zip` | raw DERConnect export ([DERConnect data](#derconnect-data)) |
+| `/data/data/anomaly/derconnect-<meter>.parquet` | hourly DERConnect series for `configs/anomaly/derconnect-hourly.yaml` |
+| `/data/data/anomaly/derconnect-2s/` | 2-second DERConnect series for `configs/anomaly/derconnect-2s.yaml` |
 | `/data/.cache/` | uv and Hugging Face caches |
 
 With `--set wandb.enabled=true`, runs also appear in the shared W&B project ([docs/wandb.md](wandb.md)).
@@ -153,6 +157,34 @@ To copy files to your laptop, start a [dev pod](#dev-pod) and:
 kubectl cp $NRP_USER-dev:/data/outputs/<name> ./outputs/<name>
 kubectl delete pod $NRP_USER-dev    # right after; it holds a GPU
 ```
+
+## DERConnect data
+
+The raw DERConnect export is sponsor data: keep it on the volume, out of git and off public hosts.
+
+| Path on the volume | Path inside a Job | What |
+|---|---|---|
+| `/data/external/derconnect/Haojian_Data.zip` | `external/derconnect/Haojian_Data.zip` | Raw export: 5 meters, Jan–May 2026, 2-second readings, 3.3 GB. sha256 `ca595c99ab4a13967e55bccbccd15a45355eeea2bf05a237fb73e541ef534291` |
+| `/data/data/anomaly/derconnect-<meter>.parquet` | `data/anomaly/derconnect-<meter>.parquet` | Hourly series (plus `-times.parquet` and `.manifest.json`) |
+| `/data/data/anomaly/derconnect-2s/` | `data/anomaly/derconnect-2s/` | 2-second series |
+
+Jobs already see these paths, so the DERConnect configs run as is:
+
+```bash
+scripts/nrp-run.sh der-hourly "sfm detect configs/anomaly/derconnect-hourly.yaml --model chronos2:amazon/chronos-2 --device cuda"
+```
+
+To restage (e.g. a different `--freq` or `--prefix-end`), stage on your machine and upload. Staging
+is CPU-only and takes a few minutes, and Jobs always hold a GPU. Use a new `--out` so existing
+staged files are kept:
+
+```bash
+scripts/nrp-transfer.sh down /data/external/derconnect/Haojian_Data.zip external/derconnect   # once
+uv run python scripts/stage_derconnect.py --freq 15min --out data/anomaly/derconnect-15min    # default zip path
+scripts/nrp-transfer.sh up data/anomaly/derconnect-15min /data/data/anomaly
+```
+
+Staging warns if the zip's sha256 differs from the team copy and records it in each manifest.
 
 ## Dev pod
 
