@@ -1,0 +1,7 @@
+# Run each candidate into its own output directory. No winner has been selected.
+# seasonal_naive:1, seasonal_naive:1440, rolling_median,
+# chronos2:amazon/chronos-2, patchtst_fm
+inherit: remote-pilot.yaml
+name: exploratory-model-comparison
+detection:
+  context_length: 1440

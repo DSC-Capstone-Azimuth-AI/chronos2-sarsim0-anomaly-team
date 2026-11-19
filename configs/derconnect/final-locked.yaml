@@ -1,0 +1,7 @@
+# Intentionally refuses execution until real selection/calibration records exist.
+# Replace every path and temporal boundary after review; these are placeholders.
+inherit: tiny-pilot.yaml
+name: final-evaluation-template
+locked: true
+selection_record: null
+calibration_record: null
