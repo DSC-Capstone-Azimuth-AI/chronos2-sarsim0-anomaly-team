@@ -109,6 +109,29 @@ series, label interval, kind, severity and seed. Injection kinds and label
 half-open semantics are implemented in `src/sarsim_fm/data/anomaly_injection.py`.
 Normal splits set `anomaly_kind` to `normal` and have no label interval.
 
+## Grid profiles (DERConnect)
+
+Setting `grid_profile: hourly` under `sarsim:` enables a repository-level
+post-processing wrapper in `src/sarsim_fm/data/sim.py` (stripped before calling
+`SarSimConfig`, so configs without it are unchanged). It layers a positive
+baseload, trapezoidal daily duty cycle, 5-weekday/2-weekend schedule, and
+load-scaled SarSim0 residuals onto both `training_stream` and `make_heldout_split`.
+
+Generate and visually compare against staged hourly DERConnect meters (requires
+`data/anomaly/derconnect-*.parquet`. See [docs/nrp.md](nrp.md#derconnect-data)
+to download from NRP or stage locally from `Haojian_Data.zip`):
+
+```bash
+# Stage hourly DERConnect meters once (skip if already in data/anomaly/)
+uv run --locked --extra cpu python scripts/stage_derconnect.py /path/to/Haojian_Data.zip --freq 1h
+
+# Generate the hourly SarSim0 split and compare visually
+uv run --locked --extra cpu sfm make-sim --config configs/data/sim-derconnect-1h.yaml
+uv run --locked --extra cpu --extra notebooks python scripts/compare_sarsim0.py \
+  --sim data/eval/sim_derconnect_1h_test.parquet \
+  --out outputs/hourly_derconnect_vs_sarsim0_grid.png
+```
+
 ## Reproducibility and caveats
 
 - Record the run config, package versions, Git SHA, and SarSim0 commit.

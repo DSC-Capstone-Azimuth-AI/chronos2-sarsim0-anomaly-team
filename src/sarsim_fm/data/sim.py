@@ -16,7 +16,9 @@ if sys.platform == "darwin":
 
 import numpy as np
 import pandas as pd
+import torch
 from sarsim0 import SarSim0Generator, SarSim0StreamingDataset, SarSimConfig
+from torch.utils.data import IterableDataset
 
 from sarsim_fm.data.eval_sets import EVAL_DIR, write_eval_set
 
@@ -32,20 +34,81 @@ SARSIM_DEFAULTS = {
 
 _TUPLE_FIELDS = {f.name for f in fields(SarSimConfig) if f.name.endswith("_range")}
 
+_PROFILE_KEYS = {"grid_profile"}
+
+def _grid_profile(overrides: dict | None) -> str | None:
+    return (overrides or {}).get("grid_profile")
+
+
+def apply_hourly_grid_profile(series: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Layer a randomized weekday/weekend building schedule onto a SarSim0 series."""
+    n = len(series)
+    t = np.arange(n, dtype=np.float64) + int(rng.integers(0, 168))
+    hour = t % 24.0
+    day = (t // 24.0) % 7.0  # 0..4 weekdays, 5..6 weekend
+
+    # Trapezoidal daily duty cycle: sharp morning ramp, flat daytime plateau, evening ramp-down
+    start_h = rng.uniform(5.0, 8.5)
+    ramp_up = rng.uniform(1.0, 2.5)
+    end_h = rng.uniform(16.5, 22.5)
+    ramp_dn = rng.uniform(1.0, 2.5)
+
+    up = np.clip((hour - start_h) / ramp_up, 0.0, 1.0)
+    dn = np.clip((end_h - hour) / ramp_dn, 0.0, 1.0)
+    daily = np.minimum(up, dn)
+
+    # 5 active weekdays + 2 reduced-load weekend days
+    weekend_scale = rng.uniform(0.15, 0.55)
+    day_scale = np.where(day < 5.0, 1.0, weekend_scale)
+
+    baseload = rng.uniform(30.0, 80.0)
+    swing = baseload * rng.uniform(0.6, 1.8)
+    schedule = baseload + swing * daily * day_scale
+
+    # Standardize raw SarSim0 output (clipped to avoid +/-1e6 outliers) as heteroscedastic noise
+    raw = np.nan_to_num(series.astype(np.float64), nan=0.0, posinf=0.0, neginf=0.0)
+    lo, hi = np.percentile(raw, [2, 98])
+    raw = np.clip(raw, lo, hi)
+    resid = (raw - np.mean(raw)) / (np.std(raw) + 1e-6)
+
+    # Noise scales with active load so nights/weekends stay quiet and weekdays vary more
+    noise_amp = baseload * rng.uniform(0.03, 0.08) + swing * daily * day_scale * rng.uniform(0.06, 0.16)
+    return np.maximum(schedule + resid * noise_amp, baseload * 0.5)
 
 def sarsim_config(context_length: int, prediction_length: int, overrides: dict | None = None) -> SarSimConfig:
-    params = {**SARSIM_DEFAULTS, **(overrides or {})}
+    clean = {k: v for k, v in (overrides or {}).items() if k not in _PROFILE_KEYS}
+    params = {**SARSIM_DEFAULTS, **clean}
     params = {k: tuple(v) if k in _TUPLE_FIELDS else v for k, v in params.items()}
     if "seasonality_pairs" in params:
         params["seasonality_pairs"] = [tuple(p) for p in params["seasonality_pairs"]]
     return SarSimConfig(
         context_window=context_length, prediction_window=prediction_length, **params
     )
+    
+class _GridProfileStream(IterableDataset):
+    def __init__(self, base: SarSim0StreamingDataset, profile: str, seed: int):
+        self.base = base
+        self.profile = profile
+        self.seed = seed
 
-
-def training_stream(data_cfg: dict) -> SarSim0StreamingDataset:
+    def __iter__(self):
+        info = torch.utils.data.get_worker_info()
+        worker_id = info.id if info is not None else 0
+        rng = np.random.default_rng(self.seed + 10_000 + worker_id)
+        for batch in self.base:
+            ctx = batch["context"].numpy()
+            tgt = batch["future_target"].numpy()
+            c_len = ctx.shape[1]
+            out_ctx, out_tgt = np.empty_like(ctx), np.empty_like(tgt)
+            for i in range(ctx.shape[0]):
+                full = np.concatenate([ctx[i], tgt[i]])
+                shaped = apply_hourly_grid_profile(full, rng).astype(ctx.dtype)
+                out_ctx[i], out_tgt[i] = shaped[:c_len], shaped[c_len:]
+            yield {**batch, "context": torch.from_numpy(out_ctx), "future_target": torch.from_numpy(out_tgt)}
+            
+def training_stream(data_cfg: dict) -> IterableDataset:
     """Infinite stream of Chronos-2 batches. Worker `i` is seeded with `seed + i`."""
-    return SarSim0StreamingDataset(
+    base = SarSim0StreamingDataset(
         context_length=data_cfg["context_length"],
         prediction_length=data_cfg["prediction_length"],
         batch_size=data_cfg["batch_size"],
@@ -54,7 +117,12 @@ def training_stream(data_cfg: dict) -> SarSim0StreamingDataset:
         ),
         seed=data_cfg["seed"],
     )
-
+    profile = _grid_profile(data_cfg.get("sarsim"))
+    if profile == "hourly":
+        return _GridProfileStream(base, profile, data_cfg["seed"])
+    if profile is not None:
+        raise ValueError(f"Unknown sarsim.grid_profile: {profile!r}")
+    return base
 
 def make_heldout_split(name: str, split: dict, defaults: dict) -> None:
     """Generate one held-out split, one series per generator call.
@@ -65,12 +133,19 @@ def make_heldout_split(name: str, split: dict, defaults: dict) -> None:
     spec = {**defaults, **split, "sarsim": {**defaults.get("sarsim", {}), **split.get("sarsim", {})}}
     config = sarsim_config(spec["context_length"], spec["prediction_length"], spec["sarsim"])
     generator = SarSim0Generator(config=config, seed=spec["seed"])
-
+    
+    profile = _grid_profile(spec["sarsim"])
+    rng = np.random.default_rng(spec["seed"] + 10_000)
+    
     contexts, targets = [], []
     for _ in range(spec["n_series"]):
         context, target = generator.generate_batch(batch_size=1)
-        contexts.append(context[0].tolist())
-        targets.append(target[0].tolist())
+        c, t_arr = np.asarray(context[0]), np.asarray(target[0])
+        if profile == "hourly":
+            shaped = apply_hourly_grid_profile(np.concatenate([c, t_arr]), rng)
+            c, t_arr = shaped[: len(c)], shaped[len(c) :]
+        contexts.append(c.tolist())
+        targets.append(t_arr.tolist())
 
     frame = pd.DataFrame(
         {
