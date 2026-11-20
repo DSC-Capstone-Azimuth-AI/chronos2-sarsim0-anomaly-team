@@ -36,6 +36,7 @@ Helpers for the minute-resolution workflow in [docs/derconnect.md](../docs/derco
 | [`derconnect/prepare_nrp_diagnostics.py`](derconnect/prepare_nrp_diagnostics.py) | Package a forecast-reproduction Job for NRP (does not submit it) | Your machine |
 | [`derconnect/prepare_nrp_pilot.py`](derconnect/prepare_nrp_pilot.py) | Package an inference-only pilot for NRP (does not submit it) | Your machine |
 | [`derconnect/remote-pilot.sh`](derconnect/remote-pilot.sh) | Dry-run, detect and export one pilot config on an existing remote machine | Remote machine |
+| [`compare_sarsim0.py`](compare_sarsim0.py) | Compare staged hourly DERConnect meters against a generated SarSim0 parquet split (summary stats + 4-row diagnostic plot) | Your machine |
 
 ## Synthetic and UCR anomaly benchmark
 

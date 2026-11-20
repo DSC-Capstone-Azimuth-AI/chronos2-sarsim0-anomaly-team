@@ -200,6 +200,7 @@ CPU and GPU results are not bit-identical. Compare runs statistically.
 | Doc | Contents |
 |---|---|
 | [architecture](docs/architecture.md) | Training step, package layout, adding a model |
+| [sarsim0](docs/sarsim0.md) | Simulator configuration, training stream, held-out splits |
 | [evaluation](docs/evaluation.md) | Datasets, metrics, limitations |
 | [results](docs/results.md) | Experiment log |
 | [patchtst-fm](docs/patchtst-fm.md) | PatchTST-FM r2 integration |

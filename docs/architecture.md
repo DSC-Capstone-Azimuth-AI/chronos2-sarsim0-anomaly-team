@@ -58,7 +58,7 @@ and a `run-config.json` behind it.
 | `cli.py` | The `sfm` command. Each subcommand reads its config, picks the device, and calls the modules below. | `cmd_check`, `cmd_make_sim`, `cmd_stage_m4`, `cmd_train`, `cmd_eval`, `cmd_results`, `cmd_wandb_import` |
 | `config.py` | Reads a YAML config, merges the file named in `inherit:` underneath it, and applies `--set` overrides. | `load_config`, `set_dotted` |
 | `runtime.py` | Decides where and how to compute: device (`auto` → CUDA if present, else CPU) and precision (bf16 on capable GPUs). Collects versions, GPU name and git SHA for `run-config.json`. | `resolve_runtime`, `environment_info` |
-| `data/sim.py` | Everything SarSim0. Turns the YAML `sarsim:` block into a `SarSimConfig` (defaults: univariate, no covariates, length 6,000), builds the endless training stream, and writes the fixed held-out sets. | `sarsim_config`, `training_stream`, `make_heldout_split` |
+| `data/sim.py` | Everything SarSim0 ([guide](sarsim0.md)). Turns the YAML `sarsim:` block into a `SarSimConfig` (defaults: univariate, no covariates, length 6,000), builds the endless training stream, and writes the fixed held-out sets. | `sarsim_config`, `training_stream`, `make_heldout_split` |
 | `data/m4.py` | Converts M4 Monthly (test) and Quarterly (validation) CSVs into the eval-set format and checks counts and horizons. | `stage_m4`, `FREQUENCIES` |
 | `data/eval_sets.py` | The single on-disk format all eval sets share, with validation on write. | `write_eval_set`, `load_eval_set`, `EvalSet` |
 | `models/__init__.py` | The registry: maps a spec like `chronos2:outputs/run/checkpoint-final` to the code that loads, trains or times it. | `load_forecaster`, `get_trainer`, `get_timer`, `Forecaster` |

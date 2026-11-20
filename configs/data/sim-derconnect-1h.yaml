@@ -1,0 +1,29 @@
+defaults:
+  n_series: 100
+  context_length: 512
+  prediction_length: 18
+  season_length: 24
+  sarsim:
+    series_length: 6000
+    burn_in: 200
+    multivariate_prob: 0.0
+    with_covariates_prob: 0.0
+    pad_max: 0
+
+    # Keep underlying SARIMA stable for smooth correlated fluctuations
+    s_range: [12, 48]
+    seasonality_pairs: [[0, 24], [12, 24]]
+    R_max: 0.2
+    D: 0
+    d_range: [0.0, 0.25]
+    poisson_lambda_range: [40.0, 150.0]
+    gamma_lambda_range: [40.0, 150.0]
+    gamma_kappa_range: [15.0, 50.0]
+    lognormal_kappa_range: [0.2, 0.8]
+
+    # Enable the hourly building-schedule wrapper in src/sarsim_fm/data/sim.py
+    grid_profile: hourly
+
+splits:
+  sim_derconnect_1h_test:
+    seed: 6100003
