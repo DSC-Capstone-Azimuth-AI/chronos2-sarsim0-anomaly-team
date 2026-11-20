@@ -1,5 +1,6 @@
 """Stage DERConnect building meters for `sfm detect`: one hourly total-power series per building.
 
+    uv run python scripts/stage_derconnect.py                     # zip at external/derconnect/
     uv run python scripts/stage_derconnect.py ~/Downloads/Haojian_Data.zip
     uv run python scripts/stage_derconnect.py <zip> --freq 15min --prefix-end 2026-02-01
     uv run python scripts/stage_derconnect.py <zip> --freq 2s --buildings E3020 \
@@ -10,6 +11,10 @@ kW and averages per interval of local wall-clock time (America/Los_Angeles), so 
 keep the same position every day across the daylight-saving change; the skipped spring-forward hour
 is interpolated like any other gap. Writes, per building, data/anomaly/derconnect-<ID>[-<freq>].parquet
 (the detector input), a .manifest.json and a -<freq>-times.parquet with timestamps for plotting.
+
+The raw zip (Jan-May 2026, 2-second readings, 3.3 GB) is not in git. Its team copy is on the NRP
+volume at /data/external/derconnect/Haojian_Data.zip, which is external/derconnect/ inside NRP Jobs,
+so the default path works there; sha256 is RAW_SHA256 below. See docs/nrp.md#derconnect-data.
 
 There are no anomaly labels. `clean_prefix_length` covers everything before --prefix-end (local
 time): the detector treats it as normal and fits its residual scale and thresholds there.
@@ -27,7 +32,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-OUT = Path(__file__).resolve().parents[1] / "data" / "anomaly"
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "data" / "anomaly"
+RAW_ZIP = ROOT / "external" / "derconnect" / "Haojian_Data.zip"
+RAW_SHA256 = "ca595c99ab4a13967e55bccbccd15a45355eeea2bf05a237fb73e541ef534291"
 TZ = "America/Los_Angeles"
 POWER = ["Active_Power_A", "Active_Power_B", "Active_Power_C"]
 # Building type per facilities management.
@@ -56,6 +64,13 @@ def stage(zip_path: Path, freq: str, prefix_end: str, out: Path, buildings=None,
     cutoff = pd.Timestamp(prefix_end)
     lo, hi = pd.Timestamp(start or "1900-01-01"), pd.Timestamp(end or "2100-01-01")
     suffix = "" if freq == "1h" and not (start or end) else f"-{freq}"
+    digest = hashlib.sha256()
+    with open(zip_path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 24), b""):
+            digest.update(block)
+    source_sha256 = digest.hexdigest()
+    if source_sha256 != RAW_SHA256:
+        print(f"warning: {zip_path.name} differs from the team copy (sha256 {source_sha256})", flush=True)
     with zipfile.ZipFile(zip_path) as archive:
         members = {}
         for name in archive.namelist():
@@ -85,7 +100,8 @@ def stage(zip_path: Path, freq: str, prefix_end: str, out: Path, buildings=None,
                    "start_local": str(index[0]), "freq": freq, "filled_points": int(missing.sum())}
             path = out / f"{stem}.parquet"
             pd.DataFrame(row, index=[0]).to_parquet(path, index=False)
-            manifest = {"name": stem, "source": zip_path.name, "members": sorted(members[building]),
+            manifest = {"name": stem, "source": zip_path.name, "source_sha256": source_sha256,
+                        "members": sorted(members[building]),
                         "signal": "total active power (A+B+C), kW, interval mean", "freq": freq,
                         "time": f"{TZ} wall clock", "prefix_end_local": prefix_end,
                         "n_points": len(series), "clean_prefix_length": prefix,
@@ -99,7 +115,8 @@ def stage(zip_path: Path, freq: str, prefix_end: str, out: Path, buildings=None,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("zip", type=Path, help="DERConnect export (Haojian_Data.zip)")
+    parser.add_argument("zip", type=Path, nargs="?", default=RAW_ZIP,
+                        help=f"DERConnect export (default: {RAW_ZIP.relative_to(ROOT)})")
     parser.add_argument("--freq", default="1h", help="resampling interval (pandas alias)")
     parser.add_argument("--prefix-end", default="2026-03-01",
                         help="local date where the assumed-normal prefix ends")

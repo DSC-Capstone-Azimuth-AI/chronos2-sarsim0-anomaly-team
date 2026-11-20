@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Execute only on the remote GPU machine. This script performs evaluation, never training.
+# Evaluate the packaged anomaly experiment on a remote CUDA machine; never trains. Run from the
+# unpacked `sfm prepare-anomaly-handoff` package (docs/anomaly-detection.md#running-remotely):
+#
+#   bash scripts/run-anomaly-remote.sh [--checkpoint /path/to/chronos2-ft-500/checkpoint-final]
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 

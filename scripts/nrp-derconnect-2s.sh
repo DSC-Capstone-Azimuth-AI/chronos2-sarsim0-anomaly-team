@@ -11,7 +11,8 @@
 #      (skip if the checkpoint is already on the volume: scripts/nrp-transfer.sh ls /data/outputs)
 #   4. Commit and push this script, the config and scripts/export_dashboard.py: the Job clones GitHub.
 #
-# Env overrides: CHECKPOINT (path on the volume), MODEL_NAME (dashboard model name), plus everything
+# Env overrides: CHECKPOINT (path on the volume, or a Hugging Face repo id such as amazon/chronos-2),
+# MODEL_NAME (dashboard model name), plus everything
 # scripts/nrp-run.sh accepts (NRP_USER, CPU, MEM, DRY_RUN=1, ...).
 # Results: /data/outputs/anomaly/derconnect-2s-<MODEL_NAME>-<BUILDING>/ (raw detector run) and
 #          /data/outputs/dashboard/<MODEL_NAME>-2s/<BUILDING>/ (Parquet for the dashboard).
@@ -27,7 +28,7 @@ for B in "$@"; do
   RUN="outputs/anomaly/derconnect-2s-${MODEL_NAME}-${B}"
   # In the Job, `sfm` already means `uv run --locked --extra cu130 --extra wandb sfm`.
   CMD="test -f data/anomaly/derconnect-2s/derconnect-${B}-2s.parquet || { echo 'data not uploaded'; exit 1; }
-test -f ${CHECKPOINT}/config.json || { echo 'checkpoint not found: ${CHECKPOINT}'; exit 1; }
+case ${CHECKPOINT} in /*) test -f ${CHECKPOINT}/config.json || { echo 'checkpoint not found: ${CHECKPOINT}'; exit 1; };; esac
 sfm detect configs/anomaly/derconnect-2s.yaml --model chronos2:${CHECKPOINT} --device cuda \\
   --set 'datasets=[data/anomaly/derconnect-2s/derconnect-${B}-2s.parquet]' --out ${RUN}
 uv run --locked --extra cu130 --extra wandb python scripts/export_dashboard.py ${RUN} \\
