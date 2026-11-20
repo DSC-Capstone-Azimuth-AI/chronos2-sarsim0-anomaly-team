@@ -1,0 +1,30 @@
+# Demonstration config for fixed held-out SarSim0 evaluation sets.
+# Generate with: sfm make-sim --config configs/data/sarsim0-example.yaml
+
+# Defaults inherited by every split below.
+defaults:
+  n_series: 100              # Number of series to generate for each split
+  context_length: 512        # Past steps supplied to the model
+  prediction_length: 18      # Future steps evaluated
+  season_length: 1           # MASE scale for simulated series with no fixed period
+
+  # Repository defaults for a univariate, covariate-free series stream.
+  sarsim:
+    series_length: 6000
+    burn_in: 200
+    multivariate_prob: 0.0
+    with_covariates_prob: 0.0
+    pad_max: 0
+
+# Each split is generated independently and receives the defaults above.
+splits:
+  # Matches the training-style distribution with a separate held-out seed.
+  sarsim0_iid_example:
+    seed: 1000003
+
+  # Uses seasons outside the training range, while retaining the 512/18 split.
+  sarsim0_ood_season_example:
+    seed: 2000003
+    sarsim:
+      s_range: [60, 120]
+      seasonality_pairs: [[0, 96], [0, 120], [96, 7], [7, 96]]
